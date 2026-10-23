@@ -1,25 +1,70 @@
 {
-  "default_light_model": "glm-4-flash",
+  "default_light_model": "claude-haiku-5.5",
   "models": {
-    "glm-4-flash": {
-      "id": "glm-4-flash",
-      "vendor": "zhipu",
-      "tier": "light"
-    },
-    "claude-3-5-haiku": {
-      "id": "claude-3-5-haiku-20241022",
+    "claude-haiku-5.5": {
+      "id": "anthropic/claude-haiku-5.5",
       "vendor": "anthropic",
       "tier": "light"
     },
-    "deepseek-chat": {
-      "id": "deepseek-chat",
+    "gemini-3.8-flash": {
+      "id": "google/gemini-3.8-flash",
+      "vendor": "google",
+      "tier": "light"
+    },
+    "gpt-6-luna": {
+      "id": "openai/gpt-6-luna",
+      "vendor": "openai",
+      "tier": "light"
+    },
+    "deepseek-v4.1-flash": {
+      "id": "deepseek/deepseek-v4.1-flash",
       "vendor": "deepseek",
       "tier": "light"
     },
-    "qwen-turbo": {
-      "id": "qwen-turbo",
+    "glm-5.3-flash": {
+      "id": "z-ai/glm-5.3-flash",
+      "vendor": "zhipu",
+      "tier": "light"
+    },
+    "qwen3.8-flash": {
+      "id": "qwen/qwen3.8-flash",
       "vendor": "aliyun",
       "tier": "light"
+    },
+    "minimax-m3.1-flash": {
+      "id": "minimax/minimax-m3.1-flash",
+      "vendor": "minimax",
+      "tier": "light"
+    },
+    "claude-opus-5.5": {
+      "id": "anthropic/claude-opus-5.5",
+      "vendor": "anthropic",
+      "tier": "heavy"
+    },
+    "claude-sonnet-5.5": {
+      "id": "anthropic/claude-sonnet-5.5",
+      "vendor": "anthropic",
+      "tier": "heavy"
+    },
+    "gemini-4-argon": {
+      "id": "google/gemini-4-argon",
+      "vendor": "google",
+      "tier": "heavy"
+    },
+    "gpt-6.1-sol-pro": {
+      "id": "openai/gpt-6.1-sol-pro",
+      "vendor": "openai",
+      "tier": "heavy"
+    },
+    "glm-5.3-prime": {
+      "id": "z-ai/glm-5.3-prime",
+      "vendor": "zhipu",
+      "tier": "heavy"
+    },
+    "qwen3.8-max-prime": {
+      "id": "qwen/qwen3.8-max-prime",
+      "vendor": "aliyun",
+      "tier": "heavy"
     }
   }
 }

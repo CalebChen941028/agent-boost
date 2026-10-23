@@ -1,6 +1,6 @@
 {
   "name": "agent-boost",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "roles": {
     "planner": {
       "prompt": "roles/planner.en.md",

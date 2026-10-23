@@ -1,0 +1,25 @@
+{
+  "default_light_model": "glm-4-flash",
+  "models": {
+    "glm-4-flash": {
+      "id": "glm-4-flash",
+      "vendor": "zhipu",
+      "tier": "light"
+    },
+    "claude-3-5-haiku": {
+      "id": "claude-3-5-haiku-20241022",
+      "vendor": "anthropic",
+      "tier": "light"
+    },
+    "deepseek-chat": {
+      "id": "deepseek-chat",
+      "vendor": "deepseek",
+      "tier": "light"
+    },
+    "qwen-turbo": {
+      "id": "qwen-turbo",
+      "vendor": "aliyun",
+      "tier": "light"
+    }
+  }
+}

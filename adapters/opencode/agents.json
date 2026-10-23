@@ -1,0 +1,38 @@
+{
+  "name": "agent-boost",
+  "version": "0.2.0",
+  "roles": {
+    "planner": {
+      "prompt": "roles/planner.en.md",
+      "model_tier": "heavy"
+    },
+    "critic": {
+      "prompt": "roles/critic.en.md",
+      "model_tier": "heavy"
+    },
+    "executor": {
+      "prompt": "roles/executor.en.md",
+      "model_tier": "dynamic"
+    },
+    "verifier": {
+      "prompt": "roles/verifier.en.md",
+      "model_tier": "heavy"
+    },
+    "diagnoser": {
+      "prompt": "roles/diagnoser.en.md",
+      "model_tier": "heavy"
+    },
+    "fixer": {
+      "prompt": "roles/fixer.en.md",
+      "model_tier": "heavy"
+    },
+    "reviewer": {
+      "prompt": "roles/reviewer.en.md",
+      "model_tier": "heavy"
+    },
+    "scribe": {
+      "prompt": "roles/scribe.en.md",
+      "model_tier": "light"
+    }
+  }
+}

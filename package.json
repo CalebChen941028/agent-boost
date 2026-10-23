@@ -1,0 +1,20 @@
+{
+  "name": "agent-boost",
+  "version": "0.2.0",
+  "description": "Multi-agent deep reasoning workflow engine for complex problems",
+  "type": "module",
+  "main": "shared/verify-gate.js",
+  "types": "shared/verify-gate.d.ts",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  },
+  "keywords": [
+    "multi-agent",
+    "deep-reasoning",
+    "orchestration",
+    "workflow",
+    "verification"
+  ],
+  "author": "Chen Liangliang",
+  "license": "MIT"
+}

@@ -16,7 +16,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -h|--help)
-      echo "Usage: $0 [--target zcode|claude|codex|opencode|generic] [--purge-backups]"
+      echo "Usage: $0 [--target zcode|claude|codex|opencode|deepseek|workbuddy|cursor|windsurf|cline|aider|generic] [--purge-backups]"
       exit 0
       ;;
     *)
@@ -53,12 +53,44 @@ from pathlib import Path
 
 manifest_path = Path(sys.argv[1])
 purge_backups = sys.argv[2].lower() == "true"
-data = json.loads(manifest_path.read_text(encoding="utf-8"))
+manifest_dir = manifest_path.parent
 
+data = json.loads(manifest_path.read_text(encoding="utf-8"))
 ts = data.get("backup_timestamp", "")
+
+# Collect active files from all other per-target manifests
+other_manifests = [
+    p for p in manifest_dir.glob("install-manifest-*.json")
+    if p.resolve() != manifest_path.resolve() and p.is_file()
+]
+
+# Legacy manifest is only considered if no target-specific manifests exist
+legacy_manifest = manifest_dir / "install-manifest.json"
+if legacy_manifest.is_file() and legacy_manifest.resolve() != manifest_path.resolve():
+    try:
+        leg_data = json.loads(legacy_manifest.read_text(encoding="utf-8"))
+        if leg_data.get("target") == data.get("target") or len(other_manifests) == 0:
+            legacy_manifest.unlink()
+        elif not other_manifests:
+            other_manifests.append(legacy_manifest)
+    except Exception:
+        pass
+
+active_files_in_other_manifests = set()
+for om in other_manifests:
+    try:
+        om_data = json.loads(om.read_text(encoding="utf-8"))
+        for file_path in om_data.get("files", []):
+            active_files_in_other_manifests.add(str(Path(file_path).resolve()))
+    except Exception:
+        pass
 
 for f in data.get("files", []):
     fp = Path(f)
+    if str(fp.resolve()) in active_files_in_other_manifests:
+        print(f"Retained shared file: {fp} (in use by another target)")
+        continue
+
     bak = Path(f"{f}.bak-{ts}") if ts else None
     if bak and bak.is_file():
         bak.replace(fp)

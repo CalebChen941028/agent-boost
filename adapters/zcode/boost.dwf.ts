@@ -131,6 +131,10 @@ export function formatFailureOutput(
   stderr: string = "",
   maxLength: number = 2000,
 ): string {
+  if (typeof maxLength !== "number" || isNaN(maxLength) || maxLength <= 0) {
+    return "";
+  }
+
   const out = (stdout || "").trim();
   const err = (stderr || "").trim();
 
@@ -170,9 +174,14 @@ export function computeFailureSignature(output: string): string {
     return line
       // Hex addresses
       .replace(/0x[a-fA-F0-9]+/g, "0xHEX")
-      // File paths with line/column (e.g. /path/to/file.js:12:34 or C:\path\file.py(45))
+      // Posix file paths with line/column (e.g. /path/to/file.js:12:34)
       .replace(/(?:\/[a-zA-Z0-9_.\-]+)+:\d+(?::\d+)?/g, "PATH:LINE")
-      .replace(/(?:[a-zA-Z]:\\[a-zA-Z0-9_.\-]+)+\(?\d+\)?/g, "PATH:LINE")
+      // Windows paths (both backslash and forward slash) with subdirectories and line/col (e.g. C:\path\to\file.py(45) or D:/dir/app.js:10:5)
+      .replace(/[a-zA-Z]:[\\/][a-zA-Z0-9_.\-\\/]+(?::\d+(?::\d+)?|\(\d+\))/g, "PATH:LINE")
+      // Standard Python tracebacks
+      .replace(/, line \d+/g, ", line LINE")
+      // Go and relative file line numbers
+      .replace(/([a-zA-Z0-9_.\-]+\.(?:[a-zA-Z0-9]+)):\d+(?::\d+)?/g, "PATH:LINE")
       // Standalone line/col numbers
       .replace(/:\d+:\d+/g, ":LINE:COL")
       // Durations / timings (e.g. 12.34ms, 1.2s)
@@ -194,33 +203,46 @@ export function computeFailureSignature(output: string): string {
 
   // Return readable signature combining key snippet and hash
   const firstDistinct = normalized[0] || "error";
-  const prefix = firstDistinct.slice(0, 30).replace(/[^a-zA-Z0-9_\-]/g, "_");
+  const cleanPrefix = firstDistinct
+    .slice(0, 30)
+    .replace(/[^\p{L}\p{N}_\-]/gu, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  const prefix = cleanPrefix || "error";
   return `${prefix}-${unsignedHash}`;
 }
 
 export function detectTargetFileConflicts(workstreams: WorkstreamLike[] = []): FileConflict[] {
   const fileOwners = new Map<string, string[]>();
+  const canonicalFiles = new Map<string, string>();
 
   for (const ws of workstreams || []) {
     if (ws.kind && ws.kind !== "code") continue;
     for (const rawFile of ws.targetFiles || []) {
       const normalized = String(rawFile || "")
         .trim()
-        .replace(/^\.\//, "")
-        .replace(/\\/g, "/");
+        .replace(/\\/g, "/")
+        .replace(/^(\.\/)+/, "")
+        .replace(/\/+/g, "/")
+        .replace(/\/+$/, "")
+        .trim();
       if (!normalized) continue;
-      const list = fileOwners.get(normalized) || [];
+      const key = normalized.toLowerCase();
+      if (!canonicalFiles.has(key)) {
+        canonicalFiles.set(key, normalized);
+      }
+      const list = fileOwners.get(key) || [];
       if (!list.includes(ws.title)) {
         list.push(ws.title);
       }
-      fileOwners.set(normalized, list);
+      fileOwners.set(key, list);
     }
   }
 
   const conflicts: FileConflict[] = [];
-  for (const [file, owners] of fileOwners.entries()) {
+  for (const [key, owners] of fileOwners.entries()) {
     if (owners.length > 1) {
-      conflicts.push({ file, workstreams: owners });
+      conflicts.push({ file: canonicalFiles.get(key) || key, workstreams: owners });
     }
   }
   return conflicts;
@@ -235,9 +257,13 @@ export function formatConclusion(
   failedWorkstreamCount: number = 0,
 ): { conclusion: string; hasBlockingIssues: boolean } {
   const shortTask = Array.from(task || "").slice(0, 60).join("");
-  const highSeverityIssues = (reviewFindings || []).filter((f) => f.severity === "high");
+  const safeFindings = Array.isArray(reviewFindings) ? reviewFindings : [];
+  const safeGaps = Array.isArray(gaps) ? gaps : [];
+  const highSeverityIssues = safeFindings.filter(
+    (f) => f && String(f.severity || "").trim().toLowerCase() === "high",
+  );
   const hasBlockingIssues =
-    gaps.length > 0 || highSeverityIssues.length > 0 || failedWorkstreamCount > 0;
+    safeGaps.length > 0 || highSeverityIssues.length > 0 || failedWorkstreamCount > 0;
 
   if (lang === "en") {
     if (workstreamCount > 0 && failedWorkstreamCount >= workstreamCount) {
@@ -247,15 +273,17 @@ export function formatConclusion(
       };
     }
     if (!hasBlockingIssues) {
+      const wsPhrase =
+        workstreamCount > 0 ? `${workstreamCount} workstream(s) implemented` : "direct verification completed";
       return {
-        conclusion: `Task "${shortTask}" completed and verified: ${workstreamCount} workstream(s) implemented, independent review raised ${reviewFindings.length} observation(s).`,
+        conclusion: `Task "${shortTask}" completed and verified: ${wsPhrase}, independent review raised ${safeFindings.length} observation(s).`,
         hasBlockingIssues: false,
       };
     }
     const reasons: string[] = [];
     if (failedWorkstreamCount > 0)
       reasons.push(`${failedWorkstreamCount} workstream(s) failed execution`);
-    if (gaps.length > 0) reasons.push(`${gaps.length} acceptance gap(s) unresolved`);
+    if (safeGaps.length > 0) reasons.push(`${safeGaps.length} acceptance gap(s) unresolved`);
     if (highSeverityIssues.length > 0)
       reasons.push(`${highSeverityIssues.length} high-severity review issue(s) identified`);
 
@@ -273,15 +301,17 @@ export function formatConclusion(
     };
   }
   if (!hasBlockingIssues) {
+    const wsPhrase =
+      workstreamCount > 0 ? `${workstreamCount} 条工作流落地` : "直接验证完成";
     return {
-      conclusion: `任务「${shortTask}」已完成并通过验证：${workstreamCount} 条工作流落地，独立复核提出 ${reviewFindings.length} 条意见。`,
+      conclusion: `任务「${shortTask}」已完成并通过验证：${wsPhrase}，独立复核提出 ${safeFindings.length} 条意见。`,
       hasBlockingIssues: false,
     };
   }
 
   const reasons: string[] = [];
   if (failedWorkstreamCount > 0) reasons.push(`${failedWorkstreamCount} 条工作流执行失败`);
-  if (gaps.length > 0) reasons.push(`${gaps.length} 个验收缺口待处理`);
+  if (safeGaps.length > 0) reasons.push(`${safeGaps.length} 个验收缺口待处理`);
   if (highSeverityIssues.length > 0) reasons.push(`${highSeverityIssues.length} 个高风险复核缺陷待解决`);
 
   return {
@@ -291,7 +321,7 @@ export function formatConclusion(
 }
 
 export function validateTeamProfile(profile: string = "hybrid"): "hybrid" | "quality" | "economy" {
-  const p = (profile || "hybrid").toLowerCase().trim();
+  const p = String(profile || "hybrid").toLowerCase().trim();
   if (p === "hybrid" || p === "quality" || p === "economy") {
     return p;
   }
@@ -323,25 +353,41 @@ export function resolveModelConfiguration(
 }
 
 export function formatExperienceEntry(entry: ExperienceCue | null | undefined): string {
-  if (!entry || !entry.cue || !entry.lesson) {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+    return "NO_ENTRY";
+  }
+  if (typeof entry.cue !== "string" || typeof entry.lesson !== "string") {
     return "NO_ENTRY";
   }
   if (entry.verdict === "confounded" || entry.verdict === "no_observed_effect") {
     return "NO_ENTRY";
   }
-  const cue = entry.cue.trim();
-  const lesson = entry.lesson.trim();
+  const sanitize = (str: any) =>
+    typeof str === "string"
+      ? str.replace(/<\/?experience>/gi, "").replace(/\s+/g, " ").trim()
+      : "";
+
+  const cue = sanitize(entry.cue);
+  const lesson = sanitize(entry.lesson);
   if (!cue || !lesson || cue === "NO_ENTRY" || lesson === "NO_ENTRY") {
     return "NO_ENTRY";
   }
+  const dim = entry.dimension === "DOM" || entry.dimension === "INV" ? entry.dimension : "INV";
+  const verdict = typeof entry.verdict === "string" ? sanitize(entry.verdict) : "";
+  if (!verdict || verdict === "confounded" || verdict === "no_observed_effect") {
+    return "NO_ENTRY";
+  }
+  const confidence = typeof entry.confidence === "string" ? sanitize(entry.confidence) : "medium";
+  const evidence = sanitize(entry.evidence);
+
   return [
     "<experience>",
-    `dimension: ${entry.dimension || "INV"}`,
+    `dimension: ${dim}`,
     `cue: ${cue}`,
     `lesson: ${lesson}`,
-    `verdict: ${entry.verdict}`,
-    `confidence: ${entry.confidence || "medium"}`,
-    `evidence: ${(entry.evidence || "").trim()}`,
+    `verdict: ${verdict}`,
+    `confidence: ${confidence || "medium"}`,
+    `evidence: ${evidence}`,
     "</experience>",
   ].join("\n");
 }
@@ -374,6 +420,11 @@ try {
   if (cfgRes.exitCode === 0 && cfgRes.stdout.trim()) {
     localModelConfig = JSON.parse(cfgRes.stdout.trim());
   }
+} catch {
+  // Ignore local model config reading errors
+}
+
+try {
   const expRes = await world.run("sh", [
     "-c",
     "cat .agent-boost/experiences.md 2>/dev/null || cat ~/.config/agent-boost/experiences.md 2>/dev/null || true",
@@ -382,7 +433,7 @@ try {
     priorExperienceCues = expRes.stdout.trim().slice(-2000);
   }
 } catch {
-  // Ignore config/ledger reading errors, fall back to args
+  // Ignore experience ledger reading errors
 }
 
 const resolvedModel = resolveModelConfiguration(String(args.lightModel ?? ""), localModelConfig);
@@ -413,14 +464,30 @@ const planPrompt = isEn
   : `任务：${task}\n${context ? `补充背景：${context}\n` : ""}${experienceContext}先勘察工作区（只读），再给出方案。任务很小时给 1 条工作流即可。为每条工作流标明 targetFiles（目标改动文件）与 tier（机械/样板标 light，核心逻辑与疑难调查标 heavy），并在 understanding 里评估更激进的验收线建议。`;
 
 const plan = await planner.ask<Plan>(planPrompt);
+const safeWorkstreams =
+  Array.isArray(plan?.workstreams) && plan.workstreams.length > 0
+    ? plan.workstreams
+    : [
+        {
+          title: isEn ? "Primary execution" : "主要执行",
+          detail: task,
+          kind: "code" as const,
+          tier: "heavy" as const,
+          targetFiles: [],
+        },
+      ];
+const safePlan: Plan = {
+  understanding: plan?.understanding || (isEn ? "No plan understanding provided" : "未提供方案概述"),
+  workstreams: safeWorkstreams,
+};
 log(
   isEn
-    ? `Plan ready: ${plan.workstreams.length} workstream(s)`
-    : `方案：${plan.understanding}；拆成 ${plan.workstreams.length} 条工作流`,
+    ? `Plan ready: ${safePlan.workstreams.length} workstream(s)`
+    : `方案：${safePlan.understanding}；拆成 ${safePlan.workstreams.length} 条工作流`,
 );
 
 // Deterministic check for targetFiles overlap across parallel code workstreams
-const fileConflicts = detectTargetFileConflicts(plan.workstreams);
+const fileConflicts = detectTargetFileConflicts(safePlan.workstreams);
 const conflictNote =
   fileConflicts.length > 0
     ? isEn
@@ -435,13 +502,13 @@ const critic = agent(isEn ? "Plan Critic" : "方案评审", {
 });
 
 const critiquePrompt = isEn
-  ? `Task: ${task}\nReview the proposed plan against workspace reality:${conflictNote}\n${JSON.stringify(plan)}`
-  : `任务是：${task}\n请结合工作区真实代码评审以下方案：${conflictNote}\n${JSON.stringify(plan)}`;
+  ? `Task: ${task}\nReview the proposed plan against workspace reality:${conflictNote}\n${JSON.stringify(safePlan)}`
+  : `任务是：${task}\n请结合工作区真实代码评审以下方案：${conflictNote}\n${JSON.stringify(safePlan)}`;
 
 const critique = await critic.ask<PlanCritique>(critiquePrompt);
 
-const allBlockingIssues = [...(critique.issues || [])];
-if (fileConflicts.length > 0 && !critique.hasBlockingIssues) {
+const allBlockingIssues = [...(Array.isArray(critique?.issues) ? critique.issues : [])];
+if (fileConflicts.length > 0 && !critique?.hasBlockingIssues) {
   for (const c of fileConflicts) {
     allBlockingIssues.push(
       isEn
@@ -451,14 +518,23 @@ if (fileConflicts.length > 0 && !critique.hasBlockingIssues) {
   }
 }
 
-const finalPlan =
-  (critique.hasBlockingIssues || fileConflicts.length > 0) && allBlockingIssues.length > 0
+const revisedPlan =
+  (Boolean(critique?.hasBlockingIssues) || fileConflicts.length > 0) && allBlockingIssues.length > 0
     ? await planner.ask<Plan>(
         isEn
           ? `Reviewer noted blocking issues. Revise plan addressing each and ensure disjoint targetFiles:\n${allBlockingIssues.map((s, i) => `${i + 1}. ${s}`).join("\n")}`
           : `评审提出以下阻塞问题，请逐条吸收并确保各并行工作流 targetFiles 互不重叠后给出修订方案：\n${allBlockingIssues.map((s, i) => `${i + 1}. ${s}`).join("\n")}`,
       )
-    : plan;
+    : safePlan;
+
+const finalWorkstreams =
+  Array.isArray(revisedPlan?.workstreams) && revisedPlan.workstreams.length > 0
+    ? revisedPlan.workstreams
+    : safePlan.workstreams;
+const finalPlan: Plan = {
+  understanding: revisedPlan?.understanding || safePlan.understanding,
+  workstreams: finalWorkstreams,
+};
 
 phase(isEn ? "Execute parallel workstreams" : "并行推进各条工作流");
 
@@ -501,10 +577,11 @@ const settledResults = await Promise.allSettled(
               ? `You are retrying a failed investigation workstream. Read-only investigation with citations. ${HARNESS_GUARDRAIL_EN}`
               : `你负责重试调查工作流。只读调查并给出证据。${HARNESS_GUARDRAIL_ZH}`,
       });
+      const retryErrStr = err?.message || String(err);
       return await retryExecutor.ask<WorkstreamResult>(
         isEn
-          ? `Retry after previous execution error.\nTask: ${task}\nWorkstream:\n${JSON.stringify(ws)}`
-          : `前次执行失败重试。\n整体任务：${task}\n工作流：\n${JSON.stringify(ws)}`,
+          ? `Retry after previous execution error.\nTask: ${task}\nWorkstream:\n${JSON.stringify(ws)}\n${context ? `Context: ${context}\n` : ""}Previous execution error: ${retryErrStr}`
+          : `前次执行失败重试。\n整体任务：${task}\n工作流：\n${JSON.stringify(ws)}\n${context ? `补充背景：${context}\n` : ""}前次执行错误：${retryErrStr}`,
       );
     }
   }),
@@ -666,13 +743,14 @@ if (allWorkstreamsFailed) {
           }\n请独立验收。`;
 
       const check = await verifier.ask<AcceptanceCheck>(recheckPrompt);
-      checkEvidence = check.evidence;
-      if (check.passed) {
+      checkEvidence = check?.evidence || "";
+      if (check?.passed) {
         gaps = [...executionFailureGaps];
         break;
       }
-      gaps = [...executionFailureGaps, ...(check.gaps || [])];
-      const currentGapSignature = computeFailureSignature((check.gaps || []).join("\n"));
+      const checkGaps = Array.isArray(check?.gaps) ? check.gaps : [];
+      gaps = [...executionFailureGaps, ...checkGaps];
+      const currentGapSignature = computeFailureSignature(checkGaps.join("\n"));
 
       if (round < MAX_FIX_ROUNDS) {
         if (
@@ -687,13 +765,13 @@ if (allWorkstreamsFailed) {
           );
           const diagnosis = await diagnoser.ask<RootCauseDiagnosis>(
             isEn
-              ? `Acceptance gaps remain stalled after repair. Gaps:\n${check.gaps.join("\n")}\nFix history:\n${JSON.stringify(fixHistory)}\nClassify dimension (INV vs DOM), diagnose root cause, and give minimal repair path.`
-              : `以下验收缺口经修复后仍停滞未解。缺口：\n${check.gaps.join("\n")}\n历史修复记录：\n${JSON.stringify(fixHistory)}\n请区分 INV/DOM 维度诊断根因并给出最小修复路径。`,
+              ? `Acceptance gaps remain stalled after repair. Gaps:\n${checkGaps.join("\n")}\nFix history:\n${JSON.stringify(fixHistory)}\nClassify dimension (INV vs DOM), diagnose root cause, and give minimal repair path.`
+              : `以下验收缺口经修复后仍停滞未解。缺口：\n${checkGaps.join("\n")}\n历史修复记录：\n${JSON.stringify(fixHistory)}\n请区分 INV/DOM 维度诊断根因并给出最小修复路径。`,
           );
           const fixRec = await fixer.ask<FixRecord>(
             isEn
-              ? `Root cause diagnosis [${diagnosis.dimension}]:\n${JSON.stringify(diagnosis)}\nRepair these gaps minimally:\n${check.gaps.join("\n")}`
-              : `根因诊断结论与修复路径 [${diagnosis.dimension}]：\n${JSON.stringify(diagnosis)}\n请按此修复缺口：\n${check.gaps.join("\n")}`,
+              ? `Root cause diagnosis [${diagnosis?.dimension || "INV"}]:\n${JSON.stringify(diagnosis)}\nRepair these gaps minimally:\n${checkGaps.join("\n")}`
+              : `根因诊断结论与修复路径 [${diagnosis?.dimension || "INV"}]：\n${JSON.stringify(diagnosis)}\n请按此修复缺口：\n${checkGaps.join("\n")}`,
           );
           fixHistory.push({
             round,
@@ -703,13 +781,13 @@ if (allWorkstreamsFailed) {
         } else {
           log(
             isEn
-              ? `Verifier found ${check.gaps.length} gap(s) on round ${round}, dispatching to Targeted Fixer...`
-              : `第 ${round} 轮验收发现 ${check.gaps.length} 个缺口，交给修复同事`,
+              ? `Verifier found ${checkGaps.length} gap(s) on round ${round}, dispatching to Targeted Fixer...`
+              : `第 ${round} 轮验收发现 ${checkGaps.length} 个缺口，交给修复同事`,
           );
           const fixRec = await fixer.ask<FixRecord>(
             isEn
-              ? `Verifier identified these gaps on round ${round}, repair each minimally:\n${check.gaps.join("\n")}`
-              : `第 ${round} 轮验收发现以下缺口，请逐条最小化修复：\n${check.gaps.join("\n")}`,
+              ? `Verifier identified these gaps on round ${round}, repair each minimally:\n${checkGaps.join("\n")}`
+              : `第 ${round} 轮验收发现以下缺口，请逐条最小化修复：\n${checkGaps.join("\n")}`,
           );
           fixHistory.push({
             round,
@@ -744,7 +822,7 @@ if (allWorkstreamsFailed) {
       : `你是未参与实现的独立复核员，代表用户把关。亲自只读审查工作区真实代码与 diff，按 Harness² 六维标尺核验：1) 交付完整性（DELIVERY）、2) 契约保真度（CONFORMANCE，严禁画蛇添足篡改接口形态）、3) 事实忠实度（FIDELITY）、4) 内部一致性（INTERNAL CONSISTENCY）、5) 运行可用性（OPERATIONAL FITNESS）、6) 收尾完成度（FINISH，无残留 TODO/占位符）。仅对导致崩溃、逻辑错误或验收未达成的实质缺陷标 high 级；若无实质问题则返回空数组。${HARNESS_GUARDRAIL_ZH}`,
   });
 
-  finalReview = await reviewer.ask<ReviewFinding[]>(
+  const rawReview = await reviewer.ask<ReviewFinding[]>(
     `${isEn ? "Task" : "任务"}：${task}\n${isEn ? "Workstream results" : "各工作流报告"}：${JSON.stringify(results)}\n${
       fixHistory.length > 0
         ? `${isEn ? "Fix loop modifications" : "修复轮次改动记录"}：${JSON.stringify(fixHistory)}\n`
@@ -762,8 +840,9 @@ if (allWorkstreamsFailed) {
     }${isEn ? "Return findings list (or empty array if no issues found)." : "返回发现的问题列表（没有问题返回空数组）。"}`,
   );
 
+  finalReview = Array.isArray(rawReview) ? rawReview : [];
   for (const f of finalReview) {
-    report(f);
+    if (f) report(f);
   }
 }
 
@@ -783,10 +862,11 @@ const synthesis = await scribe.ask<ScribeSynthesis>(
 );
 
 const formattedExp = formatExperienceEntry(synthesis?.experience);
+const baseReportMd = synthesis?.reportMarkdown || (isEn ? "No report generated." : "未生成报告。");
 const finalReportMd =
   formattedExp !== "NO_ENTRY"
-    ? `${synthesis.reportMarkdown}\n\n---\n\n### ${isEn ? "Harness² Transferable Experience Cue" : "Harness² 跨任务可迁移经验卡片"}\n\n\`\`\`xml\n${formattedExp}\n\`\`\`\n`
-    : synthesis.reportMarkdown;
+    ? `${baseReportMd}\n\n---\n\n### ${isEn ? "Harness² Transferable Experience Cue" : "Harness² 跨任务可迁移经验卡片"}\n\n\`\`\`xml\n${formattedExp}\n\`\`\`\n`
+    : baseReportMd;
 
 await artifact.markdown("report", finalReportMd, {
   title: isEn ? "Boost Deep Reasoning Report" : "Boost 深度推理报告",

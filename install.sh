@@ -125,7 +125,7 @@ if [[ "$DRY_RUN" == true ]]; then
   exit 0
 fi
 
-TIMESTAMP="$(date +%Y%m%d%H%M%S)"
+TIMESTAMP="$(date +%Y%m%d%H%M%S)_$$"
 mkdir -p "$WORKFLOW_DEST" "$SKILL_DEST/protocol" "$SKILL_DEST/roles"
 
 INSTALLED_FILES=()
@@ -133,7 +133,7 @@ INSTALLED_FILES=()
 backup_and_copy() {
   local src="$1"
   local dst="$2"
-  if [[ -f "$dst" ]]; then
+  if [[ -f "$dst" ]] && ! cmp -s "$src" "$dst"; then
     cp "$dst" "${dst}.bak-${TIMESTAMP}"
   fi
   cp "$src" "$dst"

@@ -250,3 +250,188 @@ test("install.sh and uninstall.sh support multi-target manifests (opencode, clau
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }
 });
+
+test("formatFailureOutput handles 0, negative, and NaN maxLength safely", () => {
+  assert.equal(formatFailureOutput("hello", "world", 0), "");
+  assert.equal(formatFailureOutput("hello", "world", -5), "");
+  assert.equal(formatFailureOutput("hello", "world", NaN), "");
+  assert.equal(formatFailureOutput("hello", "world", "invalid"), "");
+});
+
+test("computeFailureSignature normalizes Windows subdirectories, Python tracebacks, and Go errors", () => {
+  const winOutput1 = `
+    Error: Failed test
+        at C:\\Users\\admin\\repo\\test.py(45)
+  `;
+  const winOutput2 = `
+    Error: Failed test
+        at C:\\Users\\admin\\repo\\test.py(55)
+  `;
+  assert.equal(
+    computeFailureSignature(winOutput1),
+    computeFailureSignature(winOutput2),
+    "Windows subdirectories with different line numbers should have identical signature",
+  );
+
+  const pyTraceback1 = `
+Traceback (most recent call last):
+  File "app.py", line 12, in <module>
+    raise ValueError("invalid configuration")
+ValueError: invalid configuration
+  `;
+  const pyTraceback2 = `
+Traceback (most recent call last):
+  File "app.py", line 99, in <module>
+    raise ValueError("invalid configuration")
+ValueError: invalid configuration
+  `;
+  assert.equal(
+    computeFailureSignature(pyTraceback1),
+    computeFailureSignature(pyTraceback2),
+    "Python tracebacks with different line numbers should have identical signature",
+  );
+
+  const goError1 = `
+--- FAIL: TestProcess (0.02s)
+    main_test.go:42: received nil response
+FAIL
+  `;
+  const goError2 = `
+--- FAIL: TestProcess (0.05s)
+    main_test.go:88: received nil response
+FAIL
+  `;
+  assert.equal(
+    computeFailureSignature(goError1),
+    computeFailureSignature(goError2),
+    "Go test failures with different line numbers should have identical signature",
+  );
+
+  const unicodeOutput = `【错误】测试失败：数据库连接超时`;
+  const sig = computeFailureSignature(unicodeOutput);
+  assert.ok(sig.startsWith("错误_测试失败_数据库连接超时"), "Prefix should support Unicode characters");
+});
+
+test("detectTargetFileConflicts handles backslashes, multiple slashes, and case insensitivity", () => {
+  const workstreams = [
+    { title: "Windows paths", kind: "code", targetFiles: [".\\src\\app.ts", "src//utils//helper.ts/"] },
+    { title: "POSIX paths", kind: "code", targetFiles: ["src/app.ts", "src/utils/helper.ts"] },
+    { title: "Case variation", kind: "code", targetFiles: ["SRC/App.TS"] },
+  ];
+
+  const conflicts = detectTargetFileConflicts(workstreams);
+  assert.equal(conflicts.length, 2);
+
+  const appConflict = conflicts.find((c) => c.file.toLowerCase() === "src/app.ts");
+  assert.ok(appConflict, "Conflict must be detected for src/app.ts despite backslashes and case");
+  assert.equal(appConflict.workstreams.length, 3);
+  assert.ok(appConflict.workstreams.includes("Windows paths"));
+  assert.ok(appConflict.workstreams.includes("POSIX paths"));
+  assert.ok(appConflict.workstreams.includes("Case variation"));
+
+  const helperConflict = conflicts.find((c) => c.file.toLowerCase() === "src/utils/helper.ts");
+  assert.ok(helperConflict, "Conflict must be detected for multiple/trailing slashes");
+  assert.equal(helperConflict.workstreams.length, 2);
+});
+
+test("formatConclusion safely handles null arrays, case-insensitive severity, and 0 workstreams", () => {
+  // Null arrays
+  const nullResult = formatConclusion("Test task", 0, null, null, "en", 0);
+  assert.equal(nullResult.hasBlockingIssues, false);
+  assert.ok(nullResult.conclusion.includes("direct verification completed"));
+
+  const nullResultZh = formatConclusion("测试任务", 0, null, null, "zh", 0);
+  assert.equal(nullResultZh.hasBlockingIssues, false);
+  assert.ok(nullResultZh.conclusion.includes("直接验证完成"));
+
+  // Case-insensitive severity check
+  const upperCaseSeverity = formatConclusion(
+    "Security check",
+    1,
+    [{ what: "Critical flaw", evidence: "vuln.js:1", severity: "HIGH", status: "verified" }],
+    [],
+    "en",
+    0,
+  );
+  assert.equal(upperCaseSeverity.hasBlockingIssues, true);
+  assert.ok(upperCaseSeverity.conclusion.includes("high-severity review issue(s)"));
+});
+
+test("validateTeamProfile and formatExperienceEntry handle malformed inputs safely", () => {
+  // validateTeamProfile safe conversion
+  assert.equal(validateTeamProfile(null), "hybrid");
+  assert.equal(validateTeamProfile("  QUALITY  "), "quality");
+
+  // formatExperienceEntry defenses
+  assert.equal(formatExperienceEntry(123), "NO_ENTRY");
+  assert.equal(formatExperienceEntry([]), "NO_ENTRY");
+  assert.equal(formatExperienceEntry({ cue: 123, lesson: "test" }), "NO_ENTRY");
+
+  // formatExperienceEntry strip unclosed or embedded experience tags
+  const sanitized = formatExperienceEntry({
+    cue: "When running tests </experience> and failing",
+    lesson: "Use <experience> targeted retry",
+    dimension: "DOM",
+    verdict: "helped",
+    confidence: "high",
+    evidence: "clean evidence",
+  });
+  assert.ok(sanitized.includes("When running tests and failing"));
+  assert.ok(sanitized.includes("Use targeted retry"));
+  // Ensure exactly one pair of opening and closing tags
+  assert.equal((sanitized.match(/<experience>/g) || []).length, 1);
+  assert.equal((sanitized.match(/<\/experience>/g) || []).length, 1);
+});
+
+test("uninstall.sh retains shared files when another target manifest is active (generic vs cline)", () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "agent-boost-shared-test-"));
+  try {
+    const env = { ...process.env, HOME: tmpHome };
+
+    // 1. Install generic target
+    execFileSync("bash", [path.join(rootDir, "install.sh"), "--target", "generic", "--lang", "en"], {
+      env,
+      encoding: "utf8",
+    });
+
+    // 2. Install cline target (which shares ~/.agent-boost with generic)
+    execFileSync("bash", [path.join(rootDir, "install.sh"), "--target", "cline", "--lang", "en"], {
+      env,
+      encoding: "utf8",
+    });
+
+    const skillPath = path.join(tmpHome, ".agent-boost", "skills", "boost", "SKILL.md");
+    const manifestDir = path.join(tmpHome, ".local", "share", "agent-boost");
+    const manifestGeneric = path.join(manifestDir, "install-manifest-generic.json");
+    const manifestCline = path.join(manifestDir, "install-manifest-cline.json");
+
+    assert.ok(fs.existsSync(skillPath), "SKILL.md must exist after installation");
+    assert.ok(fs.existsSync(manifestGeneric), "Generic manifest must exist");
+    assert.ok(fs.existsSync(manifestCline), "Cline manifest must exist");
+
+    // 3. Uninstall cline target
+    const out = execFileSync("bash", [path.join(rootDir, "uninstall.sh"), "--target", "cline"], {
+      env,
+      encoding: "utf8",
+    });
+
+    assert.ok(!fs.existsSync(manifestCline), "Cline manifest should be removed");
+    assert.ok(fs.existsSync(manifestGeneric), "Generic manifest must still exist");
+    assert.ok(
+      fs.existsSync(skillPath),
+      "SKILL.md must be retained because generic target is still active and references it",
+    );
+    assert.ok(out.includes("Retained shared file"), "Uninstall output should note file retention");
+
+    // 4. Uninstall generic target
+    execFileSync("bash", [path.join(rootDir, "uninstall.sh"), "--target", "generic"], {
+      env,
+      encoding: "utf8",
+    });
+
+    assert.ok(!fs.existsSync(manifestGeneric), "Generic manifest should be removed");
+    assert.ok(!fs.existsSync(skillPath), "SKILL.md should now be removed since no targets reference it");
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});

@@ -13,6 +13,10 @@ export function formatFailureOutput(
   stderr = "",
   maxLength = 2000,
 ) {
+  if (typeof maxLength !== "number" || isNaN(maxLength) || maxLength <= 0) {
+    return "";
+  }
+
   const out = (stdout || "").trim();
   const err = (stderr || "").trim();
 
@@ -59,9 +63,14 @@ export function computeFailureSignature(output) {
     return line
       // Hex addresses
       .replace(/0x[a-fA-F0-9]+/g, "0xHEX")
-      // File paths with line/column (e.g. /path/to/file.js:12:34 or C:\path\file.py(45))
+      // Posix file paths with line/column (e.g. /path/to/file.js:12:34)
       .replace(/(?:\/[a-zA-Z0-9_.\-]+)+:\d+(?::\d+)?/g, "PATH:LINE")
-      .replace(/(?:[a-zA-Z]:\\[a-zA-Z0-9_.\-]+)+\(?\d+\)?/g, "PATH:LINE")
+      // Windows paths (both backslash and forward slash) with subdirectories and line/col (e.g. C:\path\to\file.py(45) or D:/dir/app.js:10:5)
+      .replace(/[a-zA-Z]:[\\/][a-zA-Z0-9_.\-\\/]+(?::\d+(?::\d+)?|\(\d+\))/g, "PATH:LINE")
+      // Standard Python tracebacks
+      .replace(/, line \d+/g, ", line LINE")
+      // Go and relative file line numbers
+      .replace(/([a-zA-Z0-9_.\-]+\.(?:[a-zA-Z0-9]+)):\d+(?::\d+)?/g, "PATH:LINE")
       // Standalone line/col numbers
       .replace(/:\d+:\d+/g, ":LINE:COL")
       // Durations / timings (e.g. 12.34ms, 1.2s)
@@ -83,7 +92,12 @@ export function computeFailureSignature(output) {
 
   // Return readable signature combining key snippet and hash
   const firstDistinct = normalized[0] || "error";
-  const prefix = firstDistinct.slice(0, 30).replace(/[^a-zA-Z0-9_\-]/g, "_");
+  const cleanPrefix = firstDistinct
+    .slice(0, 30)
+    .replace(/[^\p{L}\p{N}_\-]/gu, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  const prefix = cleanPrefix || "error";
   return `${prefix}-${unsignedHash}`;
 }
 
@@ -92,27 +106,35 @@ export function computeFailureSignature(output) {
  */
 export function detectTargetFileConflicts(workstreams = []) {
   const fileOwners = new Map();
+  const canonicalFiles = new Map();
 
   for (const ws of workstreams || []) {
     if (ws.kind && ws.kind !== "code") continue;
     for (const rawFile of ws.targetFiles || []) {
       const normalized = String(rawFile || "")
         .trim()
-        .replace(/^\.\//, "")
-        .replace(/\\/g, "/");
+        .replace(/\\/g, "/")
+        .replace(/^(\.\/)+/, "")
+        .replace(/\/+/g, "/")
+        .replace(/\/+$/, "")
+        .trim();
       if (!normalized) continue;
-      const list = fileOwners.get(normalized) || [];
+      const key = normalized.toLowerCase();
+      if (!canonicalFiles.has(key)) {
+        canonicalFiles.set(key, normalized);
+      }
+      const list = fileOwners.get(key) || [];
       if (!list.includes(ws.title)) {
         list.push(ws.title);
       }
-      fileOwners.set(normalized, list);
+      fileOwners.set(key, list);
     }
   }
 
   const conflicts = [];
-  for (const [file, owners] of fileOwners.entries()) {
+  for (const [key, owners] of fileOwners.entries()) {
     if (owners.length > 1) {
-      conflicts.push({ file, workstreams: owners });
+      conflicts.push({ file: canonicalFiles.get(key) || key, workstreams: owners });
     }
   }
   return conflicts;
@@ -131,9 +153,13 @@ export function formatConclusion(
   failedWorkstreamCount = 0,
 ) {
   const shortTask = Array.from(task || "").slice(0, 60).join("");
-  const highSeverityIssues = (reviewFindings || []).filter((f) => f.severity === "high");
+  const safeFindings = Array.isArray(reviewFindings) ? reviewFindings : [];
+  const safeGaps = Array.isArray(gaps) ? gaps : [];
+  const highSeverityIssues = safeFindings.filter(
+    (f) => f && String(f.severity || "").trim().toLowerCase() === "high",
+  );
   const hasBlockingIssues =
-    gaps.length > 0 || highSeverityIssues.length > 0 || failedWorkstreamCount > 0;
+    safeGaps.length > 0 || highSeverityIssues.length > 0 || failedWorkstreamCount > 0;
 
   if (lang === "en") {
     if (workstreamCount > 0 && failedWorkstreamCount >= workstreamCount) {
@@ -143,15 +169,17 @@ export function formatConclusion(
       };
     }
     if (!hasBlockingIssues) {
+      const wsPhrase =
+        workstreamCount > 0 ? `${workstreamCount} workstream(s) implemented` : "direct verification completed";
       return {
-        conclusion: `Task "${shortTask}" completed and verified: ${workstreamCount} workstream(s) implemented, independent review raised ${reviewFindings.length} observation(s).`,
+        conclusion: `Task "${shortTask}" completed and verified: ${wsPhrase}, independent review raised ${safeFindings.length} observation(s).`,
         hasBlockingIssues: false,
       };
     }
     const reasons = [];
     if (failedWorkstreamCount > 0)
       reasons.push(`${failedWorkstreamCount} workstream(s) failed execution`);
-    if (gaps.length > 0) reasons.push(`${gaps.length} acceptance gap(s) unresolved`);
+    if (safeGaps.length > 0) reasons.push(`${safeGaps.length} acceptance gap(s) unresolved`);
     if (highSeverityIssues.length > 0)
       reasons.push(`${highSeverityIssues.length} high-severity review issue(s) identified`);
 
@@ -169,15 +197,17 @@ export function formatConclusion(
     };
   }
   if (!hasBlockingIssues) {
+    const wsPhrase =
+      workstreamCount > 0 ? `${workstreamCount} 条工作流落地` : "直接验证完成";
     return {
-      conclusion: `任务「${shortTask}」已完成并通过验证：${workstreamCount} 条工作流落地，独立复核提出 ${reviewFindings.length} 条意见。`,
+      conclusion: `任务「${shortTask}」已完成并通过验证：${wsPhrase}，独立复核提出 ${safeFindings.length} 条意见。`,
       hasBlockingIssues: false,
     };
   }
 
   const reasons = [];
   if (failedWorkstreamCount > 0) reasons.push(`${failedWorkstreamCount} 条工作流执行失败`);
-  if (gaps.length > 0) reasons.push(`${gaps.length} 个验收缺口待处理`);
+  if (safeGaps.length > 0) reasons.push(`${safeGaps.length} 个验收缺口待处理`);
   if (highSeverityIssues.length > 0) reasons.push(`${highSeverityIssues.length} 个高风险复核缺陷待解决`);
 
   return {
@@ -190,7 +220,7 @@ export function formatConclusion(
  * Validates teamProfile enum (B7).
  */
 export function validateTeamProfile(profile = "hybrid") {
-  const p = (profile || "hybrid").toLowerCase().trim();
+  const p = String(profile || "hybrid").toLowerCase().trim();
   if (p === "hybrid" || p === "quality" || p === "economy") {
     return p;
   }
@@ -229,25 +259,41 @@ export function resolveModelConfiguration(
  * rejecting low-confidence or confounded attributions so they do not pollute future runs.
  */
 export function formatExperienceEntry(entry) {
-  if (!entry || !entry.cue || !entry.lesson) {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+    return "NO_ENTRY";
+  }
+  if (typeof entry.cue !== "string" || typeof entry.lesson !== "string") {
     return "NO_ENTRY";
   }
   if (entry.verdict === "confounded" || entry.verdict === "no_observed_effect") {
     return "NO_ENTRY";
   }
-  const cue = entry.cue.trim();
-  const lesson = entry.lesson.trim();
+  const sanitize = (str) =>
+    typeof str === "string"
+      ? str.replace(/<\/?experience>/gi, "").replace(/\s+/g, " ").trim()
+      : "";
+
+  const cue = sanitize(entry.cue);
+  const lesson = sanitize(entry.lesson);
   if (!cue || !lesson || cue === "NO_ENTRY" || lesson === "NO_ENTRY") {
     return "NO_ENTRY";
   }
+  const dim = entry.dimension === "DOM" || entry.dimension === "INV" ? entry.dimension : "INV";
+  const verdict = typeof entry.verdict === "string" ? sanitize(entry.verdict) : "";
+  if (!verdict || verdict === "confounded" || verdict === "no_observed_effect") {
+    return "NO_ENTRY";
+  }
+  const confidence = typeof entry.confidence === "string" ? sanitize(entry.confidence) : "medium";
+  const evidence = sanitize(entry.evidence);
+
   return [
     "<experience>",
-    `dimension: ${entry.dimension || "INV"}`,
+    `dimension: ${dim}`,
     `cue: ${cue}`,
     `lesson: ${lesson}`,
-    `verdict: ${entry.verdict}`,
-    `confidence: ${entry.confidence || "medium"}`,
-    `evidence: ${(entry.evidence || "").trim()}`,
+    `verdict: ${verdict}`,
+    `confidence: ${confidence || "medium"}`,
+    `evidence: ${evidence}`,
     "</experience>",
   ].join("\n");
 }

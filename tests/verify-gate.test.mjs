@@ -314,13 +314,25 @@ FAIL
 
 test("detectTargetFileConflicts handles backslashes, multiple slashes, and case insensitivity", () => {
   const workstreams = [
-    { title: "Windows paths", kind: "code", targetFiles: [".\\src\\app.ts", "src//utils//helper.ts/"] },
-    { title: "POSIX paths", kind: "code", targetFiles: ["src/app.ts", "src/utils/helper.ts"] },
-    { title: "Case variation", kind: "code", targetFiles: ["SRC/App.TS"] },
+    {
+      title: "Windows paths",
+      kind: "code",
+      targetFiles: [".\\src\\app.ts", "src//utils//helper.ts/", ".\\\\\\src\\nested.ts"],
+    },
+    {
+      title: "POSIX paths",
+      kind: "code",
+      targetFiles: ["src/app.ts", "src/utils/helper.ts", ".//src/nested.ts"],
+    },
+    {
+      title: "Case variation",
+      kind: "code",
+      targetFiles: ["SRC/App.TS", "././src/nested.ts"],
+    },
   ];
 
   const conflicts = detectTargetFileConflicts(workstreams);
-  assert.equal(conflicts.length, 2);
+  assert.equal(conflicts.length, 3);
 
   const appConflict = conflicts.find((c) => c.file.toLowerCase() === "src/app.ts");
   assert.ok(appConflict, "Conflict must be detected for src/app.ts despite backslashes and case");
@@ -332,6 +344,10 @@ test("detectTargetFileConflicts handles backslashes, multiple slashes, and case 
   const helperConflict = conflicts.find((c) => c.file.toLowerCase() === "src/utils/helper.ts");
   assert.ok(helperConflict, "Conflict must be detected for multiple/trailing slashes");
   assert.equal(helperConflict.workstreams.length, 2);
+
+  const nestedConflict = conflicts.find((c) => c.file.toLowerCase() === "src/nested.ts");
+  assert.ok(nestedConflict, "Conflict must be detected for .//, .\\\\\\, and ././ prefix variations");
+  assert.equal(nestedConflict.workstreams.length, 3);
 });
 
 test("formatConclusion safely handles null arrays, case-insensitive severity, and 0 workstreams", () => {
@@ -369,15 +385,15 @@ test("validateTeamProfile and formatExperienceEntry handle malformed inputs safe
 
   // formatExperienceEntry strip unclosed or embedded experience tags
   const sanitized = formatExperienceEntry({
-    cue: "When running tests </experience> and failing",
-    lesson: "Use <experience> targeted retry",
+    cue: "When running tests </experience and failing with <experience attr='1'>",
+    lesson: "Use </experience> targeted retry with <experience tag",
     dimension: "DOM",
     verdict: "helped",
     confidence: "high",
     evidence: "clean evidence",
   });
-  assert.ok(sanitized.includes("When running tests and failing"));
-  assert.ok(sanitized.includes("Use targeted retry"));
+  assert.ok(sanitized.includes("When running tests and failing with"));
+  assert.ok(sanitized.includes("Use targeted retry with tag"));
   // Ensure exactly one pair of opening and closing tags
   assert.equal((sanitized.match(/<experience>/g) || []).length, 1);
   assert.equal((sanitized.match(/<\/experience>/g) || []).length, 1);
@@ -434,4 +450,67 @@ test("uninstall.sh retains shared files when another target manifest is active (
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }
+});
+
+test("uninstall.sh retains shared files when legacy install-manifest.json is active for another target", () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "agent-boost-legacy-test-"));
+  try {
+    const env = { ...process.env, HOME: tmpHome };
+
+    // 1. Install cline target
+    execFileSync("bash", [path.join(rootDir, "install.sh"), "--target", "cline", "--lang", "en"], {
+      env,
+      encoding: "utf8",
+    });
+
+    const manifestDir = path.join(tmpHome, ".local", "share", "agent-boost");
+    const manifestCline = path.join(manifestDir, "install-manifest-cline.json");
+    const legacyManifest = path.join(manifestDir, "install-manifest.json");
+    const skillPath = path.join(tmpHome, ".agent-boost", "skills", "boost", "SKILL.md");
+
+    // 2. Simulate pre-existing legacy manifest for 'generic' target referencing shared files
+    const legacyData = {
+      target: "generic",
+      backup_timestamp: "20260101000000",
+      files: [skillPath],
+    };
+    fs.writeFileSync(legacyManifest, JSON.stringify(legacyData, null, 2), "utf8");
+
+    // 3. Uninstall cline target
+    const out = execFileSync("bash", [path.join(rootDir, "uninstall.sh"), "--target", "cline"], {
+      env,
+      encoding: "utf8",
+    });
+
+    assert.ok(!fs.existsSync(manifestCline), "Cline manifest should be removed");
+    assert.ok(
+      fs.existsSync(legacyManifest),
+      "Legacy manifest for generic target must NOT be deleted when uninstalling cline",
+    );
+    assert.ok(
+      fs.existsSync(skillPath),
+      "SKILL.md must be retained because generic target still references it via legacy manifest",
+    );
+    assert.ok(out.includes("Retained shared file"), "Uninstall output should note file retention");
+
+    // 4. Uninstall everything (no target flag)
+    execFileSync("bash", [path.join(rootDir, "uninstall.sh")], {
+      env,
+      encoding: "utf8",
+    });
+
+    assert.ok(!fs.existsSync(legacyManifest), "Legacy manifest should be cleaned up after full uninstall");
+    assert.ok(!fs.existsSync(skillPath), "SKILL.md should now be removed");
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test("build.mjs lexical scanner handles complex return types, nested template strings, and regex braces", () => {
+  // Execute build.mjs directly and ensure it completes cleanly with exit code 0
+  const out = execFileSync(process.execPath, [path.join(rootDir, "scripts", "build.mjs")], {
+    encoding: "utf8",
+  });
+  assert.ok(out.includes("✔ All 7 shared verify-gate functions are 100% parameter- and body-identical"));
+  assert.ok(out.includes("Build verification successful!"));
 });

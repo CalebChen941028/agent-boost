@@ -222,7 +222,7 @@ export function detectTargetFileConflicts(workstreams: WorkstreamLike[] = []): F
       const normalized = String(rawFile || "")
         .trim()
         .replace(/\\/g, "/")
-        .replace(/^(\.\/)+/, "")
+        .replace(/^(?:\.\/+)+/, "")
         .replace(/\/+/g, "/")
         .replace(/\/+$/, "")
         .trim();
@@ -364,7 +364,11 @@ export function formatExperienceEntry(entry: ExperienceCue | null | undefined): 
   }
   const sanitize = (str: any) =>
     typeof str === "string"
-      ? str.replace(/<\/?experience>/gi, "").replace(/\s+/g, " ").trim()
+      ? str
+          .replace(/<\/?experience(?:\s+[^<>]*)?>/gi, "")
+          .replace(/<\/?experience\b/gi, "")
+          .replace(/\s+/g, " ")
+          .trim()
       : "";
 
   const cue = sanitize(entry.cue);
@@ -517,6 +521,13 @@ if (fileConflicts.length > 0 && !critique?.hasBlockingIssues) {
     );
   }
 }
+if (Boolean(critique?.hasBlockingIssues) && allBlockingIssues.length === 0) {
+  allBlockingIssues.push(
+    isEn
+      ? "Reviewer flagged unspecified blocking issues."
+      : "评审指出了阻塞问题但未列出具体项。",
+  );
+}
 
 const revisedPlan =
   (Boolean(critique?.hasBlockingIssues) || fileConflicts.length > 0) && allBlockingIssues.length > 0
@@ -591,17 +602,23 @@ let failedWorkstreamCount = 0;
 const executionFailureGaps: string[] = [];
 
 const results: WorkstreamResult[] = settledResults.map((r, idx) => {
-  if (r.status === "fulfilled") {
+  if (r.status === "fulfilled" && r.value) {
+    const val = r.value;
+    const paths = Array.isArray(val.paths)
+      ? val.paths
+      : typeof val.paths === "string"
+        ? [val.paths]
+        : [];
     report({
-      what: r.value.summary,
-      where: (r.value.paths || []).join(isEn ? ", " : "、"),
-      notes: r.value.notes,
+      what: val.summary || (isEn ? `Workstream ${idx + 1} completed` : `工作流 ${idx + 1} 已完成`),
+      where: paths.join(isEn ? ", " : "、"),
+      notes: val.notes || "",
     });
-    return r.value;
+    return val;
   }
   failedWorkstreamCount++;
-  const wsTitle = finalPlan.workstreams[idx].title;
-  const errMsg = String(r.reason);
+  const wsTitle = finalPlan.workstreams[idx]?.title || (isEn ? `Workstream ${idx + 1}` : `工作流 ${idx + 1}`);
+  const errMsg = r.status === "rejected" ? String(r.reason) : (isEn ? "Malformed null result" : "返回结果为空或异常");
   executionFailureGaps.push(
     isEn
       ? `Workstream "${wsTitle}" failed after retry: ${errMsg}`
@@ -685,13 +702,13 @@ if (allWorkstreamsFailed) {
           );
           const fixRec = await fixer.ask<FixRecord>(
             isEn
-              ? `Root Cause Diagnoser [${diagnosis.dimension}] conclusion:\n${JSON.stringify(diagnosis)}\nApply minimal repair for Round ${round}. Failure output:\n${lastFail}`
-              : `根因诊断员 [${diagnosis.dimension} 维度] 结论与修复路径：\n${JSON.stringify(diagnosis)}\n请按此执行第 ${round} 轮最小修复。失败输出：\n${lastFail}`,
+              ? `Root Cause Diagnoser [${diagnosis?.dimension || "INV"}] conclusion:\n${JSON.stringify(diagnosis)}\nApply minimal repair for Round ${round}. Failure output:\n${lastFail}`
+              : `根因诊断员 [${diagnosis?.dimension || "INV"} 维度] 结论与修复路径：\n${JSON.stringify(diagnosis)}\n请按此执行第 ${round} 轮最小修复。失败输出：\n${lastFail}`,
           );
           fixHistory.push({
             round,
             summary: fixRec?.summary || "Applied diagnosed repair",
-            modifiedPaths: fixRec?.modifiedPaths || [],
+            modifiedPaths: Array.isArray(fixRec?.modifiedPaths) ? fixRec.modifiedPaths : [],
           });
         } else {
           log(
@@ -707,7 +724,7 @@ if (allWorkstreamsFailed) {
           fixHistory.push({
             round,
             summary: fixRec?.summary || "Applied repair",
-            modifiedPaths: fixRec?.modifiedPaths || [],
+            modifiedPaths: Array.isArray(fixRec?.modifiedPaths) ? fixRec.modifiedPaths : [],
           });
         }
         lastSignature = signature;
@@ -776,7 +793,7 @@ if (allWorkstreamsFailed) {
           fixHistory.push({
             round,
             summary: fixRec?.summary || "Applied diagnosed gap repair",
-            modifiedPaths: fixRec?.modifiedPaths || [],
+            modifiedPaths: Array.isArray(fixRec?.modifiedPaths) ? fixRec.modifiedPaths : [],
           });
         } else {
           log(
@@ -792,7 +809,7 @@ if (allWorkstreamsFailed) {
           fixHistory.push({
             round,
             summary: fixRec?.summary || "Applied gap repair",
-            modifiedPaths: fixRec?.modifiedPaths || [],
+            modifiedPaths: Array.isArray(fixRec?.modifiedPaths) ? fixRec.modifiedPaths : [],
           });
         }
         lastGapSignature = currentGapSignature;
@@ -840,9 +857,15 @@ if (allWorkstreamsFailed) {
     }${isEn ? "Return findings list (or empty array if no issues found)." : "返回发现的问题列表（没有问题返回空数组）。"}`,
   );
 
-  finalReview = Array.isArray(rawReview) ? rawReview : [];
+  finalReview = Array.isArray(rawReview)
+    ? rawReview
+    : rawReview && Array.isArray((rawReview as any).findings)
+      ? (rawReview as any).findings
+      : rawReview && Array.isArray((rawReview as any).reviewFindings)
+        ? (rawReview as any).reviewFindings
+        : [];
   for (const f of finalReview) {
-    if (f) report(f);
+    if (f && typeof f === "object") report(f);
   }
 }
 

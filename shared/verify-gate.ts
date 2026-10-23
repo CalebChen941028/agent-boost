@@ -141,7 +141,7 @@ export function detectTargetFileConflicts(workstreams: WorkstreamLike[] = []): F
       const normalized = String(rawFile || "")
         .trim()
         .replace(/\\/g, "/")
-        .replace(/^(\.\/)+/, "")
+        .replace(/^(?:\.\/+)+/, "")
         .replace(/\/+/g, "/")
         .replace(/\/+$/, "")
         .trim();
@@ -297,7 +297,11 @@ export function formatExperienceEntry(entry: ExperienceCue | null | undefined): 
   }
   const sanitize = (str: any) =>
     typeof str === "string"
-      ? str.replace(/<\/?experience>/gi, "").replace(/\s+/g, " ").trim()
+      ? str
+          .replace(/<\/?experience(?:\s+[^<>]*)?>/gi, "")
+          .replace(/<\/?experience\b/gi, "")
+          .replace(/\s+/g, " ")
+          .trim()
       : "";
 
   const cue = sanitize(entry.cue);

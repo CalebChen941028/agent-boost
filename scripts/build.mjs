@@ -186,24 +186,44 @@ function extractNormalizedFunction(source, fnName) {
   if (!hasReturnType) {
     bodyStartIdx = source.indexOf("{", closeParenIdx + 1);
   } else {
-    let seenFirstTypeToken = false;
-    let typeBraceDepth = 0;
-    for (let i = closeParenIdx + 1; i < source.length; i++) {
+    let colonIdx = source.indexOf(":", closeParenIdx + 1);
+    let angleDepth = 0;
+    let parenDepth = 0;
+    let braceDepth = 0;
+    let inType = false;
+    let strMode = null;
+
+    for (let i = colonIdx + 1; i < source.length; i++) {
       const ch = source[i];
-      if (!seenFirstTypeToken) {
-        if (ch === ":" || /\s/.test(ch)) continue;
-        seenFirstTypeToken = true;
+      if (strMode) {
+        if (ch === strMode && !isEscaped(source, i)) strMode = null;
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        strMode = ch;
+        continue;
+      }
+      if (!inType) {
+        if (/\s/.test(ch)) continue;
+        inType = true;
         if (ch === "{") {
-          typeBraceDepth = 1;
+          braceDepth = 1;
           continue;
         }
       }
-      if (typeBraceDepth > 0) {
-        if (ch === "{") typeBraceDepth++;
-        else if (ch === "}") typeBraceDepth--;
-      } else if (ch === "{") {
-        bodyStartIdx = i;
-        break;
+      if (ch === "<") angleDepth++;
+      else if (ch === ">") angleDepth--;
+      else if (ch === "(") parenDepth++;
+      else if (ch === ")") parenDepth--;
+      else if (ch === "{") {
+        if (angleDepth > 0 || parenDepth > 0 || braceDepth > 0) {
+          braceDepth++;
+        } else {
+          bodyStartIdx = i;
+          break;
+        }
+      } else if (ch === "}") {
+        if (braceDepth > 0) braceDepth--;
       }
     }
   }

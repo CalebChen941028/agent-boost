@@ -64,14 +64,14 @@ other_manifests = [
     if p.resolve() != manifest_path.resolve() and p.is_file()
 ]
 
-# Legacy manifest is only considered if no target-specific manifests exist
+# Legacy manifest is considered as another active manifest if it belongs to a different target
 legacy_manifest = manifest_dir / "install-manifest.json"
 if legacy_manifest.is_file() and legacy_manifest.resolve() != manifest_path.resolve():
     try:
         leg_data = json.loads(legacy_manifest.read_text(encoding="utf-8"))
-        if leg_data.get("target") == data.get("target") or len(other_manifests) == 0:
+        if leg_data.get("target") == data.get("target"):
             legacy_manifest.unlink()
-        elif not other_manifests:
+        else:
             other_manifests.append(legacy_manifest)
     except Exception:
         pass
@@ -108,12 +108,14 @@ print(f"Removed manifest: {manifest_path}")
 EOF
 done
 
-# Clean up legacy manifest pointer if no target manifests remain
-shopt -s nullglob
-REMAINING=("$MANIFEST_DIR"/install-manifest-*.json)
-shopt -u nullglob
-if [[ ${#REMAINING[@]} -eq 0 && -f "$MANIFEST_DIR/install-manifest.json" ]]; then
-  rm -f "$MANIFEST_DIR/install-manifest.json"
+# Clean up legacy manifest pointer if full uninstall was requested or no manifests remain
+if [[ -z "$TARGET" && -f "$MANIFEST_DIR/install-manifest.json" ]]; then
+  shopt -s nullglob
+  REMAINING=("$MANIFEST_DIR"/install-manifest-*.json)
+  shopt -u nullglob
+  if [[ ${#REMAINING[@]} -eq 0 ]]; then
+    rm -f "$MANIFEST_DIR/install-manifest.json"
+  fi
 fi
 
 echo "Uninstallation finished."

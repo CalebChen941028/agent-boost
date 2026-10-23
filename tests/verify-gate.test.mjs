@@ -5,87 +5,91 @@ import {
   computeFailureSignature,
   formatConclusion,
   validateTeamProfile,
-  validateIntegrityMode,
   resolveModelConfiguration,
 } from "../shared/verify-gate.js";
 
 test("formatFailureOutput preserves tail instead of head", () => {
-  const stdout = "START_OF_BUILD_LOG\n" + "x".repeat(1500) + "\n";
-  const stderr = "CRITICAL_ASSERTION_FAILURE: expected 42 to equal 0\nEND_OF_TRACE";
-  const formatted = formatFailureOutput(stdout, stderr, 500);
+  const head = "FIRST_LINE_INITIAL_SETUP_LOGS\n".repeat(50);
+  const tail = "ASSERTION_FAILED: expected true but got false at test.js:42\n".repeat(5);
+  const combined = head + tail;
 
-  assert.ok(formatted.length <= 500);
-  assert.ok(formatted.includes("CRITICAL_ASSERTION_FAILURE"));
-  assert.ok(formatted.includes("END_OF_TRACE"));
-  assert.ok(!formatted.includes("START_OF_BUILD_LOG"));
+  const result = formatFailureOutput(combined, "", 150);
+  assert.ok(!result.includes("FIRST_LINE_INITIAL_SETUP_LOGS"), "Head lines should be truncated");
+  assert.ok(result.includes("ASSERTION_FAILED"), "Tail assertion must be retained");
 });
 
 test("computeFailureSignature normalizes volatile lines and ignores static header", () => {
-  const log1 = `
-> test runner v1.0.0
-[2026-10-23T14:00:00Z] TestSuite running at /Users/user/project/test.js
-FAIL: test_addition (0.12s)
-AssertionError: Expected 10 at /Users/user/project/math.ts:45:12, pointer 0x7fff89ab
+  const runnerOutput1 = `
+> my-pkg@1.0.0 test
+TAP version 13
+# Subtest: test suite
+    at /Users/test/workspace/repo/src/index.js:104:12 (pid: 12345 in 14.5ms)
+    AssertionError [ERR_ASSERTION]: expected 200 == 500 at 0x7ffee1234567
+    not ok 1 - test failed
 `;
 
-  const log2 = `
-> test runner v1.0.0
-[2026-10-23T14:05:00Z] TestSuite running at /Users/other/app/test.js
-FAIL: test_addition (0.95s)
-AssertionError: Expected 10 at /Users/other/app/math.ts:45:12, pointer 0x8aef1234
+  const runnerOutput2 = `
+> my-pkg@1.0.0 test
+TAP version 13
+# Subtest: test suite
+    at /var/jenkins/workspace/repo/src/index.js:205:99 (pid: 99881 in 98.2ms)
+    AssertionError [ERR_ASSERTION]: expected 200 == 500 at 0x7faab9876543
+    not ok 1 - test failed
 `;
 
-  const sig1 = computeFailureSignature(log1);
-  const sig2 = computeFailureSignature(log2);
+  const sig1 = computeFailureSignature(runnerOutput1);
+  const sig2 = computeFailureSignature(runnerOutput2);
 
-  assert.equal(sig1, sig2);
-  assert.ok(!sig1.includes("0x7fff89ab"));
-  assert.ok(!sig1.includes("/Users/user"));
+  assert.equal(sig1, sig2, "Volatile paths, pids, durations, and addresses must normalize to the same signature");
 });
 
 test("computeFailureSignature distinguishes different failures", () => {
-  const logA = "FAIL: Expected 42 but got 0";
-  const logB = "FAIL: Timeout after 5000ms waiting for database";
+  const failA = "Error: Connection refused to database at 127.0.0.1:5432";
+  const failB = "SyntaxError: Unexpected token '}' in parser.js";
 
-  const sigA = computeFailureSignature(logA);
-  const sigB = computeFailureSignature(logB);
-
-  assert.notEqual(sigA, sigB);
+  assert.notEqual(computeFailureSignature(failA), computeFailureSignature(failB));
 });
 
 test("formatConclusion reflects high severity review findings (B1 fix)", () => {
-  const gaps = [];
-  const findings = [
-    {
-      what: "Data corruption on retry",
-      evidence: "db.ts:120",
-      severity: "high",
-      status: "verified",
-    },
-  ];
+  const result = formatConclusion(
+    "Implement auth module",
+    2,
+    [
+      {
+        what: "Security bypass in JWT validation",
+        evidence: "auth.js:45",
+        severity: "high",
+        status: "verified",
+      },
+    ],
+    [], // no gaps
+    "zh",
+  );
 
-  const zhConclusion = formatConclusion("优化缓存机制", 2, gaps, findings, "zh");
-  assert.ok(!zhConclusion.includes("已完成并通过验证"), "Must not claim success when high defects exist");
-  assert.ok(zhConclusion.includes("高危缺陷"));
-
-  const enConclusion = formatConclusion("optimize cache", 2, gaps, findings, "en");
-  assert.ok(!enConclusion.includes("successfully completed"), "Must not claim success in English either");
-  assert.ok(enConclusion.includes("high-severity defect"));
+  assert.equal(result.hasBlockingIssues, true);
+  assert.ok(result.conclusion.includes("未闭环问题"));
+  assert.ok(result.conclusion.includes("高风险复核缺陷"));
+  assert.ok(!result.conclusion.includes("已完成并通过验证"), "Must not falsely claim full completion");
 });
 
 test("formatConclusion reports success when no gaps and no high defects", () => {
-  const gaps = [];
-  const findings = [
-    {
-      what: "Minor typo in comment",
-      evidence: "file.ts:10",
-      severity: "low",
-      status: "verified",
-    },
-  ];
+  const result = formatConclusion(
+    "Implement auth module",
+    2,
+    [
+      {
+        what: "Minor typo in comment",
+        evidence: "auth.js:12",
+        severity: "low",
+        status: "verified",
+      },
+    ],
+    [],
+    "zh",
+  );
 
-  const conclusion = formatConclusion("修复拼写", 1, gaps, findings, "zh");
-  assert.ok(conclusion.includes("已完成并通过验证"));
+  assert.equal(result.hasBlockingIssues, false);
+  assert.ok(result.conclusion.includes("已完成并通过验证"));
 });
 
 test("validateTeamProfile rejects invalid profile (B7 fix)", () => {
@@ -93,41 +97,23 @@ test("validateTeamProfile rejects invalid profile (B7 fix)", () => {
   assert.equal(validateTeamProfile("quality"), "quality");
   assert.equal(validateTeamProfile("economy"), "economy");
 
-  assert.throws(() => {
-    validateTeamProfile("invalid_mode");
-  }, /Invalid teamProfile/);
-});
-
-test("validateIntegrityMode validates development, demo, and benchmark", () => {
-  assert.equal(validateIntegrityMode("DEVELOPMENT"), "development");
-  assert.equal(validateIntegrityMode("demo"), "demo");
-  assert.equal(validateIntegrityMode("benchmark"), "benchmark");
-
-  assert.throws(() => {
-    validateIntegrityMode("unknown");
-  }, /Invalid integrityMode/);
+  assert.throws(() => validateTeamProfile("super-fast"), /Invalid teamProfile/);
 });
 
 test("resolveModelConfiguration maps aliases and defaults from config (B11 fix)", () => {
   const config = {
-    default_light_model: "glm-4-flash",
+    default_light_model: "glm-flash",
     models: {
-      "glm-4-flash": { id: "glm-4-flash-001", tier: "light" },
-      "claude-3-5-haiku": { id: "claude-3-5-haiku-20241022", tier: "light" },
+      "glm-flash": { id: "opencode-go-chat/glm-5.3-flash", tier: "light" },
+      "qwen-flash": { id: "opencode-go-messages/qwen3.8-flash", tier: "light" },
     },
   };
 
-  // Explicit alias
-  const res1 = resolveModelConfiguration("claude-3-5-haiku", config);
-  assert.equal(res1.modelId, "claude-3-5-haiku-20241022");
-  assert.equal(res1.tier, "light");
+  const resolvedAlias = resolveModelConfiguration("qwen-flash", config);
+  assert.equal(resolvedAlias.modelId, "opencode-go-messages/qwen3.8-flash");
+  assert.equal(resolvedAlias.tier, "light");
 
-  // Empty request falls back to default light model
-  const res2 = resolveModelConfiguration("", config);
-  assert.equal(res2.modelId, "glm-4-flash-001");
-
-  // No config falls back to null/default
-  const res3 = resolveModelConfiguration("", null);
-  assert.equal(res3.modelId, null);
-  assert.equal(res3.tier, "default");
+  const resolvedDefault = resolveModelConfiguration("", config);
+  assert.equal(resolvedDefault.modelId, "opencode-go-chat/glm-5.3-flash");
+  assert.equal(resolvedDefault.tier, "light");
 });

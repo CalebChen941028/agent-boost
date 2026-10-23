@@ -1,14 +1,17 @@
 /**
- * Pure functions for verification gates, failure output formatting,
- * stall detection signatures, teamwork gap calculations, and workflow conclusion formatting.
- * Shared between agent-boost and agent-teamwork.
+ * Pure functions for Boost verification gates, failure output formatting,
+ * stall detection signatures, and workflow conclusion formatting.
  */
 
 /**
  * Combines stdout and stderr, prioritizing the tail where assertion failures
- * and stack traces reside (B2, C3).
+ * and stack traces reside (B2).
  */
-export function formatFailureOutput(stdout = "", stderr = "", maxLength = 2000) {
+export function formatFailureOutput(
+  stdout = "",
+  stderr = "",
+  maxLength = 2000,
+) {
   const out = (stdout || "").trim();
   const err = (stderr || "").trim();
 
@@ -23,19 +26,15 @@ export function formatFailureOutput(stdout = "", stderr = "", maxLength = 2000) 
     return combined;
   }
 
-  // Preserve the tail rather than the head
   return combined.slice(-maxLength);
 }
 
 /**
- * Computes a normalized failure signature from test output (B3, C3).
- * Strips volatile elements: line numbers, memory addresses, timestamps, file paths.
- * Takes the last 20 non-empty lines to ensure static initial runner lines
- * (e.g. "> test", "TAP version 13", "pytest ...") do not cause false positives.
+ * Computes a normalized failure signature from test output (B3).
  */
 export function computeFailureSignature(output) {
-  if (!output || !output.trim()) {
-    return "empty-failure";
+  if (!output || typeof output !== "string") {
+    return "empty-output";
   }
 
   const lines = output
@@ -44,189 +43,102 @@ export function computeFailureSignature(output) {
     .filter((l) => l.length > 0);
 
   if (lines.length === 0) {
-    return "empty-failure";
+    return "empty-output";
   }
 
-  // Take the last 20 lines
   const tailLines = lines.slice(-20);
 
   const normalized = tailLines.map((line) => {
     return line
-      // Strip ISO timestamps or times (HH:MM:SS)
-      .replace(/\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(\.\d+)?Z?/gi, "")
-      .replace(/\b\d{1,2}:\d{2}:\d{2}(\.\d+)?\b/g, "")
-      // Strip hex memory addresses (0x...)
-      .replace(/0x[a-f0-9]+/gi, "0xHEX")
-      // Strip file line/column numbers (e.g. :42:10 or line 42)
-      .replace(/:\d+:\d+/g, ":L:C")
-      .replace(/:\d+/g, ":L")
-      .replace(/\bline \d+\b/gi, "line N")
-      // Strip durations/percentages (e.g. 120ms, 1.4s, 85%)
-      .replace(/\b\d+(\.\d+)?(ms|s|m|%)\b/gi, "NUM_UNIT")
-      // Strip volatile number constants
-      .replace(/\b\d+\b/g, "N")
-      // Strip absolute directory paths (/Users/... or /home/...)
-      .replace(/(?:\/[\w.-]+){2,}/g, "/PATH")
-      .trim();
+      .replace(/0x[a-fA-F0-9]+/g, "0xHEX")
+      .replace(/(?:\/[a-zA-Z0-9_.\-]+)+:\d+(?::\d+)?/g, "PATH:LINE")
+      .replace(/(?:[a-zA-Z]:\\[a-zA-Z0-9_.\-]+)+\(?\d+\)?/g, "PATH:LINE")
+      .replace(/:\d+:\d+/g, ":LINE:COL")
+      .replace(/\b\d+(?:\.\d+)?(?:ms|s|m)\b/g, "DURATION")
+      .replace(/\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?/g, "TIMESTAMP")
+      .replace(/\b\d{4,}\b/g, "NUM");
   });
 
-  return normalized.filter((l) => l.length > 0).join(" | ");
-}
+  const joined = normalized.join("\n");
 
-/**
- * Computes signature for acceptance gaps across rounds.
- */
-export function computeGapSignature(gaps) {
-  if (!gaps || gaps.length === 0) {
-    return "no-gaps";
+  let hash = 5381;
+  for (let i = 0; i < joined.length; i++) {
+    hash = (hash * 33) ^ joined.charCodeAt(i);
   }
-  return gaps
-    .map((g) => {
-      const firstLine = g.split("\n").find((l) => l.trim().length > 0) ?? "";
-      return firstLine
-        .replace(/\d+/g, "N")
-        .replace(/(?:\/[\w.-]+){2,}/g, "/PATH")
-        .trim();
-    })
-    .sort()
-    .join(" ; ");
+  const unsignedHash = (hash >>> 0).toString(16);
+
+  const firstDistinct = normalized[0] || "error";
+  const prefix = firstDistinct.slice(0, 30).replace(/[^a-zA-Z0-9_\-]/g, "_");
+  return `${prefix}-${unsignedHash}`;
 }
 
 /**
- * Formats conclusion reflecting both verification gaps AND reviewer findings.
- * Fixes P0 bug B1: if reviewer found high severity defects, conclusion must not claim success.
+ * Formats conclusion text ensuring review findings severity is accurately reflected (B1).
  */
 export function formatConclusion(
-  shortTask,
+  task,
   workstreamCount,
+  reviewFindings = [],
   gaps = [],
-  findings = [],
   lang = "zh",
 ) {
-  const highFindings = findings.filter((f) => f.severity === "high");
-  const hasGaps = gaps.length > 0;
-  const hasHighDefects = highFindings.length > 0;
+  const shortTask = Array.from(task || "").slice(0, 60).join("");
+  const highSeverityIssues = (reviewFindings || []).filter((f) => f.severity === "high");
+  const hasBlockingIssues = gaps.length > 0 || highSeverityIssues.length > 0;
 
   if (lang === "en") {
-    if (hasGaps && hasHighDefects) {
-      return `Task "${shortTask}" completed with unresolved gaps: ${gaps.length} verification gap(s) and ${highFindings.length} high-severity defect(s) pending.`;
+    if (!hasBlockingIssues) {
+      return {
+        conclusion: `Task "${shortTask}" completed and verified: ${workstreamCount} workstream(s) implemented, independent review raised ${reviewFindings.length} observation(s).`,
+        hasBlockingIssues: false,
+      };
     }
-    if (hasGaps) {
-      return `Task "${shortTask}" implemented but verification incomplete: ${gaps.length} gap(s) remaining.`;
-    }
-    if (hasHighDefects) {
-      return `Task "${shortTask}" executed across ${workstreamCount} workstream(s), but independent review identified ${highFindings.length} high-severity defect(s).`;
-    }
-    return `Task "${shortTask}" successfully completed and verified: ${workstreamCount} workstream(s) landed; review noted ${findings.length} feedback item(s).`;
+    const reasons = [];
+    if (gaps.length > 0) reasons.push(`${gaps.length} acceptance gap(s) unresolved`);
+    if (highSeverityIssues.length > 0)
+      reasons.push(`${highSeverityIssues.length} high-severity review issue(s) identified`);
+
+    return {
+      conclusion: `Task "${shortTask}" implemented with open issues (${reasons.join(", ")}): see findings and report for resolution path.`,
+      hasBlockingIssues: true,
+    };
   }
 
-  // Chinese
-  if (hasGaps && hasHighDefects) {
-    return `任务「${shortTask}」实施完成但验收与复核未通过：存在 ${gaps.length} 个验证缺口及 ${highFindings.length} 项高危缺陷，详见报告。`;
+  if (!hasBlockingIssues) {
+    return {
+      conclusion: `任务「${shortTask}」已完成并通过验证：${workstreamCount} 条工作流落地，独立复核提出 ${reviewFindings.length} 条意见。`,
+      hasBlockingIssues: false,
+    };
   }
-  if (hasGaps) {
-    return `任务「${shortTask}」已实现但验收未全过：${gaps.length} 个缺口待处理，详见报告与 findings。`;
-  }
-  if (hasHighDefects) {
-    return `任务「${shortTask}」各工作流已落地，但独立复核发现 ${highFindings.length} 项高危缺陷未解决，不能视为已完成。`;
-  }
-  return `任务「${shortTask}」已完成并通过验证：${workstreamCount} 条工作流落地，独立复核提出 ${findings.length} 条意见。`;
+
+  const reasons = [];
+  if (gaps.length > 0) reasons.push(`${gaps.length} 个验收缺口待处理`);
+  if (highSeverityIssues.length > 0) reasons.push(`${highSeverityIssues.length} 个高风险复核缺陷待解决`);
+
+  return {
+    conclusion: `任务「${shortTask}」已实现但存在未闭环问题（${reasons.join("，")}）：详见报告与 findings。`,
+    hasBlockingIssues: true,
+  };
 }
 
 /**
- * Validates teamProfile enum value (B7, C7).
+ * Validates teamProfile enum (B7).
  */
-export function validateTeamProfile(profile) {
-  const p = (profile || "").trim().toLowerCase();
+export function validateTeamProfile(profile = "hybrid") {
+  const p = (profile || "hybrid").toLowerCase().trim();
   if (p === "hybrid" || p === "quality" || p === "economy") {
     return p;
   }
-  throw new Error(
-    `Invalid teamProfile "${profile}". Expected one of: "hybrid", "quality", "economy".`,
-  );
-}
-
-/**
- * Validates integrityMode enum value (C7).
- */
-export function validateIntegrityMode(mode) {
-  const m = (mode || "").trim().toLowerCase();
-  if (m === "development" || m === "demo" || m === "benchmark") {
-    return m;
-  }
-  throw new Error(
-    `Invalid integrityMode "${mode}". Expected one of: "development", "demo", "benchmark".`,
-  );
-}
-
-/**
- * Evaluates whether an adversarial challenger report identifies a substantive issue (C4).
- * Distinguishes genuine evidence from statements indicating "no issues found".
- */
-export function isSubstantiveChallenge(challenge) {
-  return Boolean(
-    challenge &&
-    challenge.foundIssue === true &&
-    typeof challenge.evidence === "string" &&
-    challenge.evidence.trim().length > 0,
-  );
-}
-
-/**
- * Computes open gaps for Teamwork initiatives (C1, C2).
- * Excludes superseded milestones that were replaced by replanning.
- * Counts failed verifyCommand accurately.
- */
-export function calculateTeamworkOpenGaps(
-  milestoneOutcomes = [],
-  auditPassed = true,
-  verifyCommandRan = false,
-  verifyPassed = false,
-) {
-  const failedActiveMilestones = (milestoneOutcomes || []).filter(
-    (o) => !o.passed && !o.superseded,
-  ).length;
-
-  return (
-    failedActiveMilestones +
-    (auditPassed ? 0 : 1) +
-    (verifyCommandRan && !verifyPassed ? 1 : 0)
-  );
-}
-
-/**
- * Formats teamwork conclusion text (C1, C2).
- * Strictly prevents claiming "终局验收命令通过" when verifyPassed is false.
- */
-export function formatTeamworkConclusion(
-  openGaps,
-  verifyCommandRan,
-  verifyPassed,
-  replansUsed = 0,
-  lang = "zh",
-) {
-  if (lang === "en") {
-    if (openGaps === 0) {
-      const verifyText = verifyCommandRan && verifyPassed ? ", final verification command passed" : "";
-      return `Initiative completed: all milestones passed acceptance${replansUsed > 0 ? ` (with ${replansUsed} replan)` : ""}${verifyText}, audit passed.`;
-    }
-    const verifyFailText = verifyCommandRan && !verifyPassed ? ", final verification command failed" : "";
-    return `Initiative partially completed with ${openGaps} open gap(s)${verifyFailText}${replansUsed > 0 ? ` (${replansUsed} replans used)` : ""}. See findings and report.`;
-  }
-
-  // Chinese
-  if (openGaps === 0) {
-    const verifyText = verifyCommandRan && verifyPassed ? "，终局验收命令通过" : "";
-    return `任务已完成：所有里程碑全部通过验收${replansUsed > 0 ? `（期间整体重规划 ${replansUsed} 次）` : ""}${verifyText}，总审计结论通过。`;
-  }
-  const verifyFailText = verifyCommandRan && !verifyPassed ? "，终局验收命令未通过" : "";
-  return `任务主体完成，但有 ${openGaps} 处验收缺口待处理${verifyFailText}${replansUsed > 0 ? `（已用尽 ${replansUsed} 次整体重规划仍遗留）` : ""}（详见 findings 与报告）。`;
+  throw new Error(`Invalid teamProfile "${profile}". Expected one of: "hybrid", "quality", "economy".`);
 }
 
 /**
  * Resolves model ID and tier from requested name and local models configuration (B11).
  */
-export function resolveModelConfiguration(requestedName, localConfig = null) {
+export function resolveModelConfiguration(
+  requestedName,
+  localConfig = null,
+) {
   const req = (requestedName || "").trim();
   if (req) {
     if (localConfig && localConfig.models && localConfig.models[req]) {

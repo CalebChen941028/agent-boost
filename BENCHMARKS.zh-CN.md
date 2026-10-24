@@ -1,4 +1,4 @@
-# agent-boost 架构安全与故障模式形式化验证报告
+# agent-boost 基准评测报告 —— 单一模型 vs 模型 + 技能工具（Solo GLM-5.3 vs GLM-5.3 + agent-boost）
 
 [![CI](https://github.com/CalebChen941028/agent-boost/actions/workflows/ci.yml/badge.svg)](https://github.com/CalebChen941028/agent-boost/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -6,361 +6,362 @@
 
 [English](BENCHMARKS.md) | [简体中文](BENCHMARKS.zh-CN.md)
 
-本报告呈现了基于国际公认软件工程测试基准（**BugsJS**、**SWE-bench / SWE-bench Verified**、**HumanEval-X**）所抽象出的 12 类典型工程故障场景下，**原生单智能体行为模式（Mode A: 无状态盲改与无约束并发）**与加载 **`agent-boost` (Mode B: v0.4.0 五阶段确定性状态机)** 的形式化逻辑与拦截能力验证对照。
+本报告回答一个问题：大脑同为 GLM-5.3，换掉它外围的工程工具链，结果差多少？依据 **BugsJS**、**SWE-bench / SWE-bench Verified**、**HumanEval-X** 的典型故障原型构造的 12 项可执行基准任务，双轨对照如下：
 
-本套件完全公开透明，代码位于 [`scripts/run-benchmarks.mjs`](scripts/run-benchmarks.mjs)，可通过运行 `npm run benchmark` 或 `npm test` 在本地 100% 确定性复现。
+- **Solo GLM-5.3（对照组）**：单一模型，零工具。没有文件冲突门禁、没有 Git 回滚、没有复现测试合成、没有终身记忆、没有独立裁判。
+- **GLM-5.3 + agent-boost（实验组）**：同一个大脑，驱动 v0.4.0 五阶段状态机——`detectTargetFileConflicts` 冲突拦截、LATS Git 快照回滚、`verify_synth.sh` 测试合成、INV-First 机制预检、`calculateYardstickScore` 六维量化裁判、`matchExperienceCues` 经验召回。
 
----
-
-## 1. 评测性质与真实性透明度声明（必读）
-
-> [!IMPORTANT] **核心声明：这是形式化故障拦截逻辑验证，而非调用远程大模型 API 的随机打分**
-> 1. **本报告是什么**：
->    这是一套**架构级故障模式与状态机拦截的形式化可执行验证集（Structural Failure-Mode Verification Harness）**。它针对原生单智能体在开发复杂多文件项目时最致命的 12 种结构性死穴（并发写文件静默覆写、无回滚盲道修复累积、无测试口头吹嘘、原型链污染、死锁循环等），通过真实的 JavaScript 可执行代码，验证 `agent-boost` 核心算法（[`detectTargetFileConflicts`](shared/verify-gate.ts)、[`computeFailureSignature`](shared/verify-gate.ts)、LATS Git 快照回滚、[`calculateYardstickScore`](shared/verify-gate.ts)）是否能在算法层面 100% 形式化拦截这些破坏行为。
-> 2. **本报告不是什么**：
->    本脚本**未向 Gemini 3.8 Flash 或任何大模型远程 API 发起实时网络调用**。它在几毫秒内即可运行完毕，验证的是状态机和纯函数的**数学逻辑与拦截机制保证**。
-> 3. **真实端到端实盘中，差距真的有“0% vs 100%”这么大吗？**
->    **绝对不会这么极端。**
->    - 在真实的端到端大模型实战中，一个能力优秀的基础模型（如 Gemini 3.8 Flash High、Claude 3.5 Sonnet）仅凭自身单枪匹马，在 12 个任务中也能靠运气或强大的单次上下文做对相当一部分（真实通过率约在 30%~50% 之间），绝不会像对抗样本里那样全军覆没（0%）；
->    - 加载了 `agent-boost` 后，多出的保障主要体现在**高危陷阱的主动拦截、改坏时的自动回滚、以及杜绝虚假自封**，能将整体稳定度和通过率拉升（根据 SWE-bench/Harness² 学术经验通常能提升 20~35 个百分点），但也绝不可能突破底层模型智力上限做到 100% 神仙全过；
->    - 之所以在这 12 个针对性基准中呈现 `0/12 vs 12/12`，是因为这 12 个用例专门设计用来验证“**当这些致命故障发生时，单智能体架构在机制上注定失效，而 Boost 状态机在规则上必定拦截**”。
+测试载体是 [`scripts/run-benchmarks.mjs`](scripts/run-benchmarks.mjs)。运行 `npm run benchmark`，本报告里的每个数字都会在你终端打印出来。环境要求只有 Node 18 及以上；CI 在 Node 18.x / 20.x / 22.x 三个版本上执行同一套校验（见 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)）。
 
 ---
 
-## 2. 机制对比矩阵 (12 类典型工程故障对决)
+## 1. 方法论，先说清楚
 
-原生单智能体在单轮或简单生成循环（Generative Loop）中处理复杂多文件工程任务时，普遍面临四大结构性故障模式：
-1. **并行写文件竞态与代码覆写（Code Clobbering）**：未协同的子智能体同时修改路由网关或包导出入口，后完成者静默覆写先完成者代码（Last-write-wins）。
-2. **级联回归与死胡同修复（Cascade Regressions）**：候选修复破坏了既有测试时，单智能体缺乏回滚能力，在中毒状态上继续盲目堆砌补丁，导致代码债务恶性膨胀。
-3. **虚假完成与规格漂移（Self-Certification Drift）**：智能体通过口头宣称“完美实现”进行自我认证，实则未合成确定性复现测试，交付物在生产边界场景崩溃。
-4. **无状态失忆与重复踩坑（Stateless Amnesia）**：会话间无法沉淀跨仓经验，在不同项目或跨平台 CI 构建中反复陷入同类路径分隔符或并发锁陷阱。
+> [!IMPORTANT] 读表之前先读这段
+> 1. **实际运行的是什么。** 一套确定性可执行模拟。对照组与实验组都执行真实 JavaScript：对照组跑无门禁的裸代码路径（后写覆盖、盲重试叠补丁、无验证即宣称完成），实验组调用仓库内置纯函数（[`shared/verify-gate.ts`](shared/verify-gate.ts) 中的 `detectTargetFileConflicts`、`computeFailureSignature`、`calculateYardstickScore`、`matchExperienceCues`、`evaluateTaskComplexity`）。12 项任务全套在笔记本上毫秒级跑完。修复轮次取自实际执行的循环计数器，Token 消耗按公开常量 `TOKENS_PER_AGENT_TURN = 1200`（[`scripts/run-benchmarks.mjs`](scripts/run-benchmarks.mjs)）乘以计数的模型轮次核算，因此 MTTR 与 Token 行跨运行字节级一致。
+> 2. **没有运行的是什么。** 远程大模型 API。runner 唯一的导入是 `../shared/verify-gate.js`（[`scripts/run-benchmarks.mjs`](scripts/run-benchmarks.mjs)），零网络 I/O。下文 Token 数字是该核算模型下的账面轮次成本，并非 API 计量。GLM-5.3 是对照组与实验组在实盘中共用的大脑——本套件度量的是大脑外围的工具链，模型准确率不在其内。实盘双轨对照的完整流程见第 8 节。
+> 3. **为什么差距是 0/12 vs 12/12。** 每项任务都是边界场景：对照组的故障模式被写成可执行事实（例如第二个工作流对 `src/server.ts` 的写入字面替换第一个），实验组的门禁按构造必然拦截。这组数字验证的是机制保证，而非实盘模型排行榜。实盘中强模型当然能做对相当一部分常规任务——在这 12 个边界上，缺失的工具直接决定成败。
 
-`agent-boost` 将 AI 编程从不可控的生成式循环重构为**基于动态算力分配、静态冲突阻断、LATS 树搜索回滚、六维 Yardstick 标尺量化评审与终身经验记忆的 5 阶段确定性状态机**。
-
-### 实测对比矩阵
-
-在 live Antigravity + Gemini 3.8 Flash (High) 环境下，12 项国际公认标准基准工程任务的实测对照结果如下：
-
-| 评测维度 | 原生单智能体 (无 Boost) | 加载 `agent-boost` (v0.4.0) | 实测提升幅度 | 核心机制 / 纯函数 |
-| :--- | :--- | :--- | :--- | :--- |
-| **复杂工程任务首次通过率 (Pass@1)** | **0/12 (0.0%)** | **12/12 (100.0%)** | **+100.0%（提升 12.0 倍）** | 验证时算力分配 + 确定性硬关卡 |
-| **并行写文件冲突拦截率** | 0/3（静默覆写丢失） | **3/3（100.0% 拦截并解耦）** | **100% 杜绝冲突** | `detectTargetFileConflicts` |
-| **级联回归陷阱自愈率** | 0/2（盲道累积烂补丁） | **2/2（100.0% 快照回滚）** | **100% 回归自愈** | LATS Git 树搜索 (`git reset --hard`) |
-| **无测试任务复现用例合成率** | 0/1（口头宣称完成） | **1/1（100.0% 自动合成）** | **100% 覆盖率** | 自调试用例合成 (`verify_synth.sh`) |
-| **深层语义与边界漏洞防御** | 0/6（原型污染、死锁泄漏）| **6/6（100.0% 修复并阻断）** | **100% 防御率** | INV/DOM 根因解耦 + A-MEM 经验检索 |
-| **Harness² 六维量化标尺得分** | 79.4 / 100 分（高危缺陷阻断） | **99.7 / 100 分（全项达标放行）** | **综合提升 +20.3 分** | 独立 Reviewer 加权裁判 (`calculateYardstickScore`) |
-| **平均修复收敛轮次 (MTTR)** | 4.8 轮（甚至超时放弃） | **1.4 轮** | **缩短 70.8% 修复耗时** | `computeFailureSignature` (DJB2 + INV-First) |
-| **任务闭环有效 Token 消耗比** | 1.00x（基准反复试错） | **0.58x**（目标精准微创） | **节省 42.0% Token 消耗** | 全失败熔断器 + INV/DOM 分离诊断 |
-
-> [!NOTE] **真实复现声明与透明度披露**
-> - **实测运行环境**：macOS 系统、Node.js v22.23.1、Antigravity 平台、Gemini 3.8 Flash (High) 模型配置。
-> - **100% 本地完全可复现**：任何开发者均可在克隆本项目后，通过 `npm run benchmark` 或 `npm test` 直接在终端复现本报告中的每一项任务退出码、执行耗时与评审得分。
-> - **零模拟占位数据**：本测试套件完全摈弃纯理论估算，每一项任务均执行真实的 Node.js/JavaScript 代码逻辑，调用核心纯函数（[`detectTargetFileConflicts`](shared/verify-gate.ts)、[`calculateYardstickScore`](shared/verify-gate.ts)、[`computeFailureSignature`](shared/verify-gate.ts)），运行实际回归验证集并计算量化得分。
+本报告的每个数字满足两条溯源规则之一：能在 `npm run benchmark` 的 stdout 里 grep 到，或直接对应任务源码常量。凡属结构性推论而非实测的部分，正文均明确标注。
 
 ---
 
-## 2. 国际标准基准任务得分榜 (Standard Benchmark Scoreboard)
+## 2. 单一模型 vs 模型+技能工具实测对比矩阵（Solo GLM-5.3 vs GLM-5.3 + agent-boost）
 
-本评测选取的 12 项任务严格源自软件工程学术界与工业界最受认可的标准数据集：
-- **BugsJS**：发表于国际软件工程顶会 *ICSE/MSR 2019*（Gyimesi 等人），提炼自 Express、Commander、Lodash、Minisearch、Mocha、Chalk 等主流 Node.js 顶级项目的真实缺陷。
-- **SWE-bench / SWE-bench Verified**：普林斯顿 NLP 与 OpenAI 联合推出的工业级真实 GitHub Issue 基准（*ICLR 2024*，Jimenez 等人），强制执行双重回归验证（`FAIL_TO_PASS` 必须修好当前缺陷，且绝不能破坏 `PASS_TO_PASS` 既有测试）。
-- **HumanEval-X**：国际公认的多语言复杂算法与状态机基准（*IEEE TKDE 2023*，Zheng 等人），覆盖高并发竞争与零拷贝流式解析挑战。
+runner 执行任何任务之前先自报对照框架——以下横幅逐字引自 `npm run benchmark` stdout：
 
-### 12 项标准化任务完整对局记分牌
+```text
+================================================================================
+  agent-boost v0.4.0 Standard Engineering Benchmark Evaluation Harness
+  Comparison frame: Solo GLM-5.3 (single model) vs GLM-5.3 + agent-boost v0.4.0 (model + skill tools)
+  Harness: deterministic executable simulation — no live LLM API calls (reproduce: npm run benchmark)
+  Benchmark Datasets: BugsJS (ICSE/MSR), SWE-bench Verified, HumanEval-X
+================================================================================
+```
 
-| 任务 ID | 标准数据集来源 | 任务缺陷类型 | 原生单智能体得分 | `agent-boost` v0.4.0 得分 | 得分增益 | 解决状态 |
+12 个任务块之后打印 `AGGREGATE SUMMARY` 汇总。下表逐行转写该汇总块；右列给出每个数值对应的 stdout 行，用 `npm run benchmark | grep` 即可逐项核对。
+
+| 评测维度 | Solo GLM-5.3（无工具） | GLM-5.3 + agent-boost (v0.4.0) | 溯源（stdout 行） |
+| :--- | :--- | :--- | :--- |
+| **任务首次通过率 (Pass@1)** | **0/12 (0.0%)** | **12/12 (100.0%)**——+100.0%（12.0 倍） | `Baseline Solo Agent Pass Rate: 0/12 (0.0%)`、`With agent-boost v0.4.0 Pass Rate: 12/12 (100.0%)`、`First-Pass Pass Rate Delta: +100.0% (12.0x improvement)` |
+| **并行写文件冲突拦截率** | 0/3——三项竞态任务全部发生静默后写覆盖 | **3/3（100.0% 拦截并解耦）** | `Parallel Write Race Conflicts Intercepted: 3/3 (100.0% elimination)`；对照组 0/3 即记分牌中 `BUGSJS-EXPRESS-104`、`BUGSJS-COMMANDER-212`、`BUGSJS-CHALK-031` 三行 baseline `FAIL` |
+| **级联回归陷阱自愈率** | 0/2——无回滚，污染分支永久留存 | **2/2（100.0% 经 LATS reset 自愈）** | `Cascade Regressions Recovered via LATS: 2/2 (100.0% recovery)` |
+| **无测试任务复现脚本合成覆盖率** | 0/1——无任何可执行检查即宣称完成 | **1/1（100.0% 自动合成）** | `Unverified Issues Synthesized via Synth: 1/1 (100.0% coverage)` |
+| **六维 Yardstick 平均分** | 79.4 / 100（12 项全部被门禁拦截） | **99.7 / 100（+20.3 分）** | `Mean Harness² Yardstick Conformance Score: 79.4/100 -> 99.7/100 (+20.3 pts)` |
+| **平均修复收敛轮次 (MTTR)** | **2.92 轮**（盲重试） | **1.00 轮**（工具介入） | `Mean Repair Rounds (MTTR): 2.92 (solo, blind retries) -> 1.00 (boost, tool-mediated)` |
+| **核算 Token 消耗（比值）** | **116400** | **80400**——0.691x | `Accounted Token Spend (total): 116400 (solo) -> 80400 (boost)`、`Token Spend Ratio (boost/baseline): 0.691x` |
+
+末两行怎么读。修复轮次是任务代码实际执行的循环计数——对照组每轮重放未确诊的补丁并重跑失败检查（盲重试上限三轮），实验组的计数器只在工具介入（冲突拦截、LATS 回滚、重诊断）真正发生时前进；若干实验组任务为 0 轮，因为首过规划已直接收敛。Token 消耗是该核算模型的成本单位——`TOKENS_PER_AGENT_TURN = 1200`（[`scripts/run-benchmarks.mjs:52`](scripts/run-benchmarks.mjs)）乘以每个被计数的模型轮次——不是 API 计量，harness 不发起任何调用。实盘 Token 比请用第 8 节指南测量。
+
+---
+
+## 3. 12 项任务完整对局记分牌
+
+`npm run benchmark` 对每项任务打印一组对照——`Mode A (Solo GLM-5.3, no tools)` 对阵 `Mode B (GLM-5.3 + agent-boost)`，各带退出码、六维得分、实际执行修复轮次与核算 Token 消耗——随后输出汇总矩阵。下表转写自这些任务行；耗时随机器浮动，其余各项确定不变。
+
+| 任务 ID | 数据集来源 | 故障类型 | Solo GLM-5.3（退出码 / 得分 / 轮次 / Token） | GLM-5.3 + agent-boost（退出码 / 得分 / 轮次 / Token） | 得分增益 | 结果 |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `BUGSJS-EXPRESS-104` | BugsJS / Express.js | 并行写文件冲突 | ✖ FAIL (退出码: 1, 82分) | ✔ **PASS** (退出码: 0, **100**分) | +18 分 | **已彻底解决** |
-| `BUGSJS-COMMANDER-212` | BugsJS / Commander.js | 并行写文件冲突 | ✖ FAIL (退出码: 1, 76分) | ✔ **PASS** (退出码: 0, **99**分) | +23 分 | **已彻底解决** |
-| `SWEBENCH-SEMVER-088` | SWE-bench Verified / SemVer | 级联回归缺陷调试 | ✖ FAIL (退出码: 1, 80分) | ✔ **PASS** (退出码: 0, **100**分) | +20 分 | **已彻底解决** |
-| `BUGSJS-LODASH-142` | BugsJS / Lodash (CVE-2018-3721) | 深层语义安全漏洞 | ✖ FAIL (退出码: 1, 86分) | ✔ **PASS** (退出码: 0, **99**分) | +13 分 | **已彻底解决** |
-| `SWEBENCH-ASYNC-039` | SWE-bench / Async.js | 并发死锁与反转 | ✖ FAIL (退出码: 124, 76分) | ✔ **PASS** (退出码: 0, **100**分) | +24 分 | **已彻底解决** |
-| `BUGSJS-MINISEARCH-055` | BugsJS / Minisearch | 跨平台路径规范化 | ✖ FAIL (退出码: 1, 81分) | ✔ **PASS** (退出码: 0, **100**分) | +19 分 | **已彻底解决** |
-| `HUMANEVALX-JS-084` | HumanEval-X / LeetCode Hard | 算法流式状态机 | ✖ FAIL (退出码: 1, 80分) | ✔ **PASS** (退出码: 0, **99**分) | +19 分 | **已彻底解决** |
-| `SWEBENCH-PRISMA-117` | SWE-bench Verified / Prisma | 级联回归缺陷调试 | ✖ FAIL (退出码: 1, 80分) | ✔ **PASS** (退出码: 0, **99**分) | +19 分 | **已彻底解决** |
-| `SWEBENCH-REST-063` | SWE-bench / REST API Migration | 无测试复现用例合成 | ✖ FAIL (退出码: 1, 76分) | ✔ **PASS** (退出码: 0, **100**分) | +24 分 | **已彻底解决** |
-| `BUGSJS-MOCHA-076` | BugsJS / Mocha.js | 不变量先行 (INV) | ✖ FAIL (退出码: 1, 80分) | ✔ **PASS** (退出码: 0, **100**分) | +20 分 | **已彻底解决** |
-| `HUMANEVALX-JS-112` | HumanEval-X / Concurrency | 高并发滑动窗口限流 | ✖ FAIL (退出码: 1, 80分) | ✔ **PASS** (退出码: 0, **100**分) | +20 分 | **已彻底解决** |
-| `BUGSJS-CHALK-031` | BugsJS / Chalk.js | 并行写文件冲突 | ✖ FAIL (退出码: 1, 76分) | ✔ **PASS** (退出码: 0, **100**分) | +24 分 | **已彻底解决** |
+| `BUGSJS-EXPRESS-104` | BugsJS / Express.js | 并行写文件竞态 | ✖ FAIL（1 / 82 / 3 / 10800） | ✔ **PASS**（0 / **100** / 1 / 8400） | +18 分 | **已解决** |
+| `BUGSJS-COMMANDER-212` | BugsJS / Commander.js | 并行写文件竞态 | ✖ FAIL（1 / 76 / 3 / 10800） | ✔ **PASS**（0 / **99** / 1 / 8400） | +23 分 | **已解决** |
+| `SWEBENCH-SEMVER-088` | SWE-bench Verified / node-semver | 级联回归调试 | ✖ FAIL（1 / 80 / 3 / 9600） | ✔ **PASS**（0 / **100** / 2 / 8400） | +20 分 | **已解决** |
+| `BUGSJS-LODASH-142` | BugsJS / Lodash（CVE-2018-3721） | 深层语义边界 | ✖ FAIL（1 / 86 / 2 / 7200） | ✔ **PASS**（0 / **99** / 1 / 6000） | +13 分 | **已解决** |
+| `SWEBENCH-ASYNC-039` | SWE-bench / Async.js | 深层语义边界 | ✖ FAIL（**124** / 76 / 3 / 9600） | ✔ **PASS**（0 / **100** / 2 / 7200） | +24 分 | **已解决** |
+| `BUGSJS-MINISEARCH-055` | BugsJS / Minisearch | 深层语义边界 | ✖ FAIL（1 / 81 / 3 / 9600） | ✔ **PASS**（0 / **100** / 0 / 4800） | +19 分 | **已解决** |
+| `HUMANEVALX-JS-084` | HumanEval-X / LeetCode Hard | 算法与状态机 | ✖ FAIL（1 / 80 / 3 / 9600） | ✔ **PASS**（0 / **99** / 0 / 4800） | +19 分 | **已解决** |
+| `SWEBENCH-PRISMA-117` | SWE-bench Verified / Prisma ORM | 级联回归调试 | ✖ FAIL（1 / 80 / 3 / 9600） | ✔ **PASS**（0 / **99** / 2 / 8400） | +19 分 | **已解决** |
+| `SWEBENCH-REST-063` | SWE-bench / REST 迁移 | 无验证合成 | ✖ FAIL（1 / 76 / 3 / 9600） | ✔ **PASS**（0 / **100** / 1 / 6000） | +24 分 | **已解决** |
+| `BUGSJS-MOCHA-076` | BugsJS / Mocha.js | 深层语义边界 | ✖ FAIL（1 / 80 / 3 / 9600） | ✔ **PASS**（0 / **100** / 1 / 4800） | +20 分 | **已解决** |
+| `HUMANEVALX-JS-112` | HumanEval-X / LeetCode Hard | 深层语义边界 | ✖ FAIL（1 / 80 / 3 / 9600） | ✔ **PASS**（0 / **100** / 0 / 4800） | +20 分 | **已解决** |
+| `BUGSJS-CHALK-031` | BugsJS / Chalk.js | 并行写文件竞态 | ✖ FAIL（1 / 76 / 3 / 10800） | ✔ **PASS**（0 / **100** / 1 / 8400） | +24 分 | **已解决** |
+
+`SWEBENCH-ASYNC-039` 的退出码 124 是典型的超时签名：对照组的环形锁依赖永不解开，harness 将其编码为超时退出。平均分由十二行直接算出：对照组 `953/12 = 79.4`，实验组 `1196/12 = 99.7`。实验组的零轮次条目（`MINISEARCH-055`、`HUMANEVALX-JS-084`、`HUMANEVALX-JS-112`）是首过直接收敛——经验召回、算力档位分配与原子化设计把修复轮次本身消掉了。
+
+任务来源：
+
+- **BugsJS**：Node.js 权威缺陷基准（Gyimesi 等，*MSR/ICSE 2019*），取材 Express、Commander、Lodash、Minisearch、Mocha、Chalk。
+- **SWE-bench / SWE-bench Verified**：双重验证仓库基准（Jimenez 等，*ICLR 2024*）——`FAIL_TO_PASS` 必须转绿，`PASS_TO_PASS` 不许变红；本套件覆盖 node-semver、Async.js、REST schema 迁移与 Prisma ORM。
+- **HumanEval-X**：多语言算法基准（Zheng 等，*IEEE TKDE 2023*），覆盖流式状态机解析与并发限流。
 
 ---
 
-## 3. 执行拓扑结构全景对照
+## 4. 执行拓扑对照
 
-### A. 原生单智能体：扁平非受控循环
+### A. Solo GLM-5.3：扁平无协同循环
 ```
 [用户任务]
      │
      ▼
-[单智能体 / 未协同并行子智能体]
+[单一智能体 / 未协同并行子智能体]
      │
-     ├──► 子智能体 1 修改业务文件 A & 共享入口 server.ts
-     └──► 子智能体 2 修改业务文件 B & 共享入口 server.ts ──► [静默覆写 / 竞态条件]
-     │
-     ▼
-[在中毒状态上盲目修改] ──► [引发新测试回归] ──► [基于补丁继续打补丁] ──► [级联雪崩]
+     ├──► 子智能体 1 修改业务文件 A & 共享入口
+     └──► 子智能体 2 修改业务文件 B & 共享入口 ──► [后写覆盖，静默丢失]
      │
      ▼
-[缺乏客观裁判的自封提示] ──► “我已经完美实现了所有功能！” ──► [虚假自封 / CI 崩溃]
+[在损坏状态上继续修改] ──► [测试回归] ──► [补丁摞补丁] ──► [级联恶化]
+     │
+     ▼
+[对话式自我认证] ──► "全部完成" ──► [生产崩溃 / CI 失败]
 ```
 
-### B. `agent-boost`：5 阶段确定性多智能体状态机
+### B. GLM-5.3 + agent-boost：五阶段确定性状态机
 ```
 [用户任务]
      │
      ▼
 Phase 1: 动态算力分配与终身经验记忆
-  ├── evaluateTaskComplexity: 动态计算算力档位 (简单: 2轮 / 标准: 3轮 / 困难: 5轮)
-  ├── matchExperienceCues: 从 .agent-boost/experiences.md 检索高相关历史经验
-  ├── Planner: 回答专家 4 问 + 显式声明各工作流的 targetFiles
-  ├── detectTargetFileConflicts: 编译前确定性检查重叠文件并强制拦截解耦
-  └── Critic: 挑战因果假设，强制执行 KEEP_BASE 防折腾纪律
+  ├── evaluateTaskComplexity: 算力档位（简单: 1 轮 / 标准: 3 轮 / 困难: 5 轮）
+  ├── matchExperienceCues: 从 .agent-boost/experiences.md 召回 <experience> 经验卡片
+  ├── Planner: 专家四问 + 各工作流显式声明互斥 targetFiles
+  ├── detectTargetFileConflicts: 任何修改发生前拦截 targetFiles 重叠
+  └── Critic: 质疑因果假定；执行 KEEP_BASE 防折腾纪律
      │
      ▼
-Phase 2: 分级并行执行与熔断器
-  ├── 强力模型梯队: 承接算法攻坚与核心架构修改
-  ├── 经济模型梯队: 承接样板代码、单测生成与文档撰写 (allSettled + 1 次重试)
-  └── 熔断器: 全失败时果断阻断，避免死循环消耗 Token
+Phase 2: 分层并行执行与熔断器
+  ├── 重模型梯队: 算法攻坚与核心架构修改
+  ├── 轻模型梯队: 样板与文档（allSettled + 1 次重试）
+  └── 熔断器: 全工作流失败时短路后续验收
      │
      ▼
-Phase 3: 严格验证门禁、不变量先行与 LATS 回滚
-  ├── 自动化测试发现与自调试复现脚本合成 (verify_synth.sh)
-  ├── DJB2 20行归一化错误指纹: computeFailureSignature 过滤易变 PID 与耗时
-  ├── 不变量先行 (INV-First): 隔离环境/运行时异常与业务逻辑错误
-  ├── LATS Git 树搜索快照: 修复前自动打 checkpoint，引入回归时强制 git reset --hard 回滚
-  └── 停滞检测: 连续指纹一致时直接升级 INV/DOM 根因诊断器
+Phase 3: 验证门禁、INV-First 与 LATS 回滚
+  ├── 测试发现；无验证命令时合成 verify_synth.sh
+  ├── computeFailureSignature: 尾部 20 行 DJB2 归一化指纹（剥离 PID 与耗时）
+  ├── INV-First: 先分离环境/运行器崩溃，再看业务逻辑
+  ├── LATS 检查点: 修复前 git 快照；回归时 git reset --hard
+  └── 停滞检测: 指纹一致即升级 INV/DOM 根因诊断
      │
      ▼
-Phase 4: Harness² 六维量化标尺复核 (Agent-as-a-Judge)
-  └── 独立 Reviewer 针对 git diff 进行六维量化打分：
-      交付 (25分)、契约符合 (20分)、真实度 (15分)、
-      内部一致 (15分)、工程健壮 (15分)、细节完成 (10分)。
-      硬门禁: 综合得分 >= 85 且零高危缺陷，否则绝不放行。
+Phase 4: 六维 Yardstick 复核（Agent-as-a-Judge）
+  └── 新任 Reviewer 按 DELIVERY (25)、CONFORMANCE (20)、FIDELITY (15)、
+      INTERNAL CONSISTENCY (15)、OPERATIONAL FITNESS (15)、FINISH (10) 给 git diff 打分
+      ——权重固定于 shared/verify-gate.ts:637。门禁：总分 >= 85 且零 high 级缺陷。
      │
      ▼
-Phase 5: 真实闭环结论与经验沉淀
-  ├── formatConclusion: 生成真实结论，暴露遗留缺陷与复核发现
-  └── formatExperienceEntry: 过滤混淆干扰，沉淀高质量经验线索
+Phase 5: 客观结论与经验沉淀
+  ├── 暴露遗留缺口与缺陷发现的诚实结论
+  └── 有效 <experience> 卡片写入 .agent-boost/experiences.md
 ```
 
 ---
 
-## 4. 真实工程案例全流程实录 (Case Studies)
+## 5. 为什么模型再强，也盖不住这四类故障
 
-### 场景 A：并行写文件竞态与代码覆写 (`BUGSJS-EXPRESS-104`, `BUGSJS-COMMANDER-212`, `BUGSJS-CHALK-031`)
+更强的模型能写出更好的补丁。下面四类故障没有一类是补丁质量问题；它们全部是协调与验证问题，单上下文推理再强也消不掉——因为模型对出事的资源没有原子操作权。
 
-#### 工程背景
-在企业级网关重构与 CLI 工具迭代中，两个并行子工作流被派发：
-- 工作流 1：实现 OAuth2 PKCE 认证路由与会话挂载 (`src/routes/auth.ts`, `src/server.ts`)
-- 工作流 2：接入 OpenTelemetry 分布式追踪与指标上报中间件 (`src/routes/api.ts`, `src/server.ts`)
+### 5.1 没有文件锁：并行写入互相吞噬
 
-#### 原生单智能体执行轨迹（静默覆写丢失）
-```
-[Subagent-1] 正在向 src/server.ts 写入 OAuth2 路由挂载逻辑...
-[Subagent-2] 正在向 src/server.ts 写入 OpenTelemetry 追踪中间件...
-[文件系统] Subagent-2 比 Subagent-1 晚完成 400ms：触发后写入者赢（LAST-WRITE-WINS）！
-[执行结果] src/server.ts 包含了指标路由，但 Subagent-1 写入的 OAuth2 认证路由被彻底抹去！
-[运行时输出]
-  $ curl http://localhost:3000/api/auth/login
-  HTTP/1.1 404 Not Found
-  Cannot GET /api/auth/login
-[六维 Yardstick 得分] 82 分（交付缺陷: 缺失核心认证路由，高危）-> 强制拦截！
+两个工作流都在 `targetFiles` 里列了 `src/server.ts`。无门禁时发生的事被 harness 写成可执行代码——后一次写入直接替换前一次（[`scripts/run-benchmarks.mjs:88`](scripts/run-benchmarks.mjs)）：
+
+```js
+let content = "app.use('/api/auth', authRouter);\n";
+content = "app.use('/api/metrics', metricsRouter);\n"; // ws2 silently overwrites ws1
 ```
 
-#### `agent-boost` 执行轨迹（确定性静态拦截）
-```
-[Phase 1: Planner] 工作流 1 声明 targetFiles: ["src/routes/auth.ts", "src/server.ts"]
-[Phase 1: Planner] 工作流 2 声明 targetFiles: ["src/routes/api.ts", "src/server.ts"]
-[Phase 1: 确定性门禁] 调用 detectTargetFileConflicts(workstreams)...
-[门禁阻断] 拦截到文件冲突：
-  冲突文件: "src/server.ts"
-  关联工作流: ["OAuth2 认证路由", "指标 API 路由"]
-[Phase 1: Critic] 在代码修改发生前强制阻断！
-  重构方案：解耦入口挂载，抽取独立适配器：
-  - 工作流 1: ["src/routes/auth.ts", "src/middleware/auth.ts"]
-  - 工作流 2: ["src/routes/api.ts", "src/middleware/api.ts"]
-  - 串行组装流水线: ["src/server.ts"]
-[Phase 2: 并行执行] 子智能体在互不相交的文件集合上执行，零冲突合并。
-[测试结果] 所有路由端点正常响应，测试 100% 通过。Yardstick 得分：100 分（PASSED）。
-```
+认证路由没了，运行时对 `/api/auth/login` 回答 `404`。对照组只看得见"路由缺失"这个症状，重放同一份并发补丁，再次被覆盖——stdout 为这份徒劳记下 `RepairRounds: 3, TokenSpend: 10800`。同一构造还抹掉了 Commander 桶导出里的 `TimeoutOption`（`:207`）和 Chalk 入口的 `chalk.hex`（`:1369`）。记分牌上的冲突拦截 0/3 说的就是这件事。实验组在执行前调用 `detectTargetFileConflicts`（`:155`），拒绝重叠，规划器重新切分为互斥文件集加串行组装——stdout 机制行：`Phase 1 intercepted conflict on src/server.ts. Decoupled into 3 disjoint workstreams.` 丢失的写入不会因为推理变强而失而复得；只有排序或互斥能救，而互斥是一件工具。
+
+### 5.2 没有 Git 回滚：一个坏补丁毒化后续所有补丁
+
+`SWEBENCH-SEMVER-088` 修复连字符区间的预发布判定。朴素比较器（[`scripts/run-benchmarks.mjs:341`](scripts/run-benchmarks.mjs)）确实修好了 `FAIL_TO_PASS`——同时弄坏了 `PASS_TO_PASS` 检查（`^1.2.3` 插入符号语义、`+build` 元数据）。没有检查点，每轮盲重试都往已坏的比较器上再叠一层表面修补并重跑套件；循环跑满三轮（`RepairRounds: 3`），套件依然失败。实验组修复前先打快照，比对失败指纹（`:390`），看到发散，执行 `git reset --hard` 回到检查点，再把修复收窄到连字符区间——stdout：`Signature shift detected regression. LATS rollback discarded poisoned patch. DOM diagnosis resolved both test suites.` `SWEBENCH-PRISMA-117` 在租户级联删除上重复同一模式。写出更好的正则救不了这一局；缺的是回到已知良好状态的能力——那是版本控制操作，属于思考之外的范畴。
+
+### 5.3 没有测试合成：完成与否无从验证
+
+`SWEBENCH-REST-063` 的设定是 `verifyCommand: null`。对照组改完转换器就宣布成功；第一个 `billing_address: null` 的请求抛出 `TypeError: Cannot read properties of null (reading 'line1')`（[`scripts/run-benchmarks.mjs:1078`](scripts/run-benchmarks.mjs)）。缺少能合成可执行检查的工具时，"完成"只是一个说法，不是一种状态。实验组探测到命令缺失，合成 `verify_synth.sh`，交付前复现崩溃，再用 `cust.billing_address?.line1 ?? ""` 修补（`:1130`）。判断"这段代码能处理 null"只花一条断言；让这个判断站得住，要花一套 harness。
+
+### 5.4 没有终身记忆：同一个坑，每个会话踩一遍
+
+`BUGSJS-MINISEARCH-055` 是 Windows 路径转义缺陷。实验组 Phase 1 召回了一张历史 `<experience>` 卡片——线索 `cross-platform path separators and regex delimiters in node build tools`，教训 `Normalize paths with path.normalize(p).replace(/\/g, '/') before regex matching`（[`scripts/run-benchmarks.mjs:787`](scripts/run-benchmarks.mjs)）——先归一再匹配，Windows 与 POSIX 路径一次通过（stdout：`Phase 1 recalled A-MEM path normalization cue. Zero-shot first pass on Windows CI path formats.`）。对照组每次会话从零开始；这类平台冷知识恰恰活在笔记里，活在模型权重之外。
+
+两个支撑机制补全全景。INV-First（`BUGSJS-MOCHA-076`）先确认故障出在运行器还是业务，再决定谁去改代码——对照组在生命周期钩子的未处理拒绝面前去改测试断言，改错了层（`:1168`）。六维裁判则把"看着对"变成一个带 85 分门禁的数字（[`shared/verify-gate.ts:737`](shared/verify-gate.ts)），三个隐蔽语义缺陷（`LODASH-142` 原型污染、`ASYNC-039` 锁序死锁、`HUMANEVALX-JS-112` 限流竞态）都靠它拦下——粗读一遍是发现不了的。
 
 ---
 
-### 场景 B：级联回归陷阱与 LATS 回滚 (`SWEBENCH-SEMVER-088`, `SWEBENCH-PRISMA-117`)
+## 6. 行为差异日志 —— 四个场景
 
-#### 工程背景
-在 SWE-bench 典型的双重验证任务中，智能体需要修复预发布版本号区间比较的缺陷（`FAIL_TO_PASS`：`semver.satisfies("1.2.3-alpha.1", "1.2.0 - 1.2.4")`），同时绝不能破坏现存的 45 项基准测试（`PASS_TO_PASS`：包括 `^1.2.3` 插入符号区间以及 `+build.123` 构建元数据剥离）。
+runner 为每类故障原型保留一个专属 `BEHAVIOR DIFF LOG` 段落，并排打印对照组与实验组的结局详情。以下逐字引自同一次 `npm run benchmark` 运行：
 
-#### 原生单智能体执行轨迹（盲道累积毒补丁）
-```
-[第 1 轮] 候选补丁 1 粗暴修改了区间比较正则，将预发布标签视为普通版本号。
-  运行 npm test:
-  ✔ FAIL_TO_PASS 成功变绿！
-  ✖ PASS_TO_PASS test/range.js (插入符号区间 ^1.2.3 校验失败)
-  ✖ PASS_TO_PASS test/metadata.js (构建元数据被错误剥离)
-  2 项既有测试挂掉！ <-- 引入了回归缺陷！
-[第 2 轮] 智能体缺乏版本库回滚机制，直接在当前被破坏的代码上继续打补丁 2。
-  越修越烂，插入符号解析器彻底语法错误。
-  5 项测试失败！ <-- 债务级联雪崩！
-[最终下场] 消耗 15 万 Token 后超时放弃，仓库陷入无法自愈的污染分支。
-[六维 Yardstick 得分] 80 分（契约缺陷与真实度缺陷，高危）-> 强制拦截！
+```text
+================================================================================
+                            BEHAVIOR DIFF LOG
+================================================================================
+BUGSJS-EXPRESS-104 - Express Gateway Route Mounting Race
+  Mode A (Solo GLM-5.3, no tools): Subagent 2 silently clobbered src/server.ts. OAuth2 route dropped -> 404. [repairRounds: 3, tokenSpend: 10800]
+  Mode B (GLM-5.3 + agent-boost):  Phase 1 intercepted conflict on src/server.ts. Decoupled into 3 disjoint workstreams. 100% clean merge. [repairRounds: 1, tokenSpend: 8400]
+SWEBENCH-SEMVER-088 - SemVer Pre-Release Hyphen Range Regression
+  Mode A (Solo GLM-5.3, no tools): Naive fix passed FAIL_TO_PASS but regressed the PASS_TO_PASS suite (build metadata stripped). Agent stacked fixes on poisoned branch. [repairRounds: 3, tokenSpend: 9600]
+  Mode B (GLM-5.3 + agent-boost):  Signature shift detected regression. LATS rollback discarded poisoned patch. DOM diagnosis resolved both test suites. [repairRounds: 2, tokenSpend: 8400]
+BUGSJS-MOCHA-076 - Mocha Async Lifecycle Hook Unhandled Rejection
+  Mode A (Solo GLM-5.3, no tools): Agent churned domain test assertions instead of containing lifecycle hook promise rejection. [repairRounds: 3, tokenSpend: 9600]
+  Mode B (GLM-5.3 + agent-boost):  Invariant Pre-flight separated runner crash from domain logic. Repaired lifecycle error boundary. [repairRounds: 1, tokenSpend: 4800]
+HUMANEVALX-JS-112 - Concurrent Sliding-Window Rate Limiter Race
+  Mode A (Solo GLM-5.3, no tools): Non-atomic check allowed 100/50 requests through (breached by 50). [repairRounds: 3, tokenSpend: 9600]
+  Mode B (GLM-5.3 + agent-boost):  Atomic sliding window strictly enforced 50/50 requests. Zero over-allocation. [repairRounds: 0, tokenSpend: 4800]
 ```
 
-#### `agent-boost` 执行轨迹（LATS 树搜索快照与回滚）
+逐任务执行块补充退出码与得分。耗时随机器浮动；退出码、得分、轮次与 Token 数确定不变。
+
+### 场景 A —— Express 路由挂载竞态（`BUGSJS-EXPRESS-104`）
+
+```text
+[1/12] Executing Task: BUGSJS-EXPRESS-104 - Express Gateway Route Mounting Race
+     Origin:   BugsJS (ICSE/MSR) / Express.js
+     Category: Parallel Write Race
+     Mode A (Solo GLM-5.3, no tools): ✖ FAIL (Exit: 1, Score: 82/100, RepairRounds: 3, TokenSpend: 10800, 0.14ms)
+     Mode B (GLM-5.3 + agent-boost):  ✔ PASS (Exit: 0, Score: 100/100, RepairRounds: 1, TokenSpend: 8400, 0.23ms)
+     Mechanism:         Phase 1 intercepted conflict on src/server.ts. Decoupled into 3 disjoint workstreams. 100% clean merge.
 ```
-[第 1 轮快照] 记录 Git 快照 Checkpoint: CHECKPOINT_ROUND_0
-[第 1 轮执行] 修复者尝试粗暴正则替换。
-  验证者执行 npm test: 2 项既有测试失败！
-[Phase 3: 回归门禁]
-  基线失败数: 1  -->  当前失败数: 2
-  指纹比对发散:
-    初始指纹: semver_hyphen_prerelease-4a189f
-    回归指纹: semver_caret_metadata_break-b91c82
-  检测到破坏性回归！
-[LATS 回滚] 触发自动化版本树重置：
-  $ git reset --hard CHECKPOINT_ROUND_0
-  HEAD 重置为干净基线状态。毒补丁被彻底抹除！
-[Phase 3: INV/DOM 根因诊断]
-  不变量先行: 确认测试运行环境正常 (isInvariantFailure: false)。
-  DOM 根因诊断器分析 SemVer 语义规范：
-  “根因在于只有当区间的边界显式包含预发布标签时，才能允许预发布版本参与命中判定。”
-[第 2 轮快照] 记录 Checkpoint: CHECKPOINT_ROUND_1
-[第 2 轮执行] 精准限定预发布边界生效逻辑，绝不波及插入符号与元数据。
-[第 2 轮验证]
-  PASS test/range.js (FAIL_TO_PASS 通过！)
-  PASS test/caret.js (PASS_TO_PASS 通过！)
-  PASS test/metadata.js (PASS_TO_PASS 通过！)
-  全集 46 项测试 100% 通过！
-[执行结果] 2 轮彻底收敛，零技术债务累积。Yardstick 得分：100 分（PASSED）。
+
+差异：对照组的网关文件只剩第二个工作流的路由（认证挂载丢失，退出码 1，三轮盲补丁烧掉 10800 核算 Token 一无所获）；实验组在规划期拦下重叠，一轮解耦后两组路由全部存活。
+
+### 场景 B —— SemVer 区间回归（`SWEBENCH-SEMVER-088`）
+
+```text
+[3/12] Executing Task: SWEBENCH-SEMVER-088 - SemVer Pre-Release Hyphen Range Regression
+     Origin:   SWE-bench Verified / node-semver
+     Category: Regression-Prone Debugging
+     Mode A (Solo GLM-5.3, no tools): ✖ FAIL (Exit: 1, Score: 80/100, RepairRounds: 3, TokenSpend: 9600, 0.16ms)
+     Mode B (GLM-5.3 + agent-boost):  ✔ PASS (Exit: 0, Score: 100/100, RepairRounds: 2, TokenSpend: 8400, 0.70ms)
+     Mechanism:         Signature shift detected regression. LATS rollback discarded poisoned patch. DOM diagnosis resolved both test suites.
 ```
+
+差异：对照组用一个绿灯换来一片红灯，且在整个三轮盲重试里都停留在污染分支上；实验组检测到指纹发散，回滚代码树，把比较器重新收界，两轮内让两套验证（`FAIL_TO_PASS` 与 `PASS_TO_PASS`）同时通过。
+
+### 场景 C —— Mocha 运行器异常（`BUGSJS-MOCHA-076`）
+
+```text
+[10/12] Executing Task: BUGSJS-MOCHA-076 - Mocha Async Lifecycle Hook Unhandled Rejection
+     Origin:   BugsJS / Mocha.js
+     Category: Semantic Edge Case
+     Mode A (Solo GLM-5.3, no tools): ✖ FAIL (Exit: 1, Score: 80/100, RepairRounds: 3, TokenSpend: 9600, 0.05ms)
+     Mode B (GLM-5.3 + agent-boost):  ✔ PASS (Exit: 0, Score: 100/100, RepairRounds: 1, TokenSpend: 4800, 0.03ms)
+     Mechanism:         Invariant Pre-flight separated runner crash from domain logic. Repaired lifecycle error boundary.
+```
+
+差异：对照组把运行器层的未处理拒绝当成断言问题，连改三轮都改错了层（退出码 1）；INV-First 判定其为机制故障，一轮即把修复落在生命周期错误边界上，核算 Token 成本减半。
+
+### 场景 D —— 高并发限流穿透（`HUMANEVALX-JS-112`）
+
+```text
+[11/12] Executing Task: HUMANEVALX-JS-112 - Concurrent Sliding-Window Rate Limiter Race
+     Origin:   HumanEval-X / LeetCode Hard
+     Category: Semantic Edge Case
+     Mode A (Solo GLM-5.3, no tools): ✖ FAIL (Exit: 1, Score: 80/100, RepairRounds: 3, TokenSpend: 9600, 0.89ms)
+     Mode B (GLM-5.3 + agent-boost):  ✔ PASS (Exit: 0, Score: 100/100, RepairRounds: 0, TokenSpend: 4800, 0.62ms)
+     Mechanism:         Atomic sliding window strictly enforced 50/50 requests. Zero over-allocation.
+```
+
+任务常量：限额 50，并发调用方 100（[`scripts/run-benchmarks.mjs:1259`](scripts/run-benchmarks.mjs)）。对照组的非原子"先查后改"让每个调用方都在任何人自增前读到计数器，其 details 字符串为 `Non-atomic check allowed 100/50 requests through (breached by 50)`（`:1305`）——超额放行 100%。实验组的原子滑动窗口精确放行 `50/50`，零超额，零修复轮次即收敛。差别只是一段同步代码；对竞态想得再清楚也消不掉竞态，把检查串行化才能。
 
 ---
 
-### 场景 C：无测试任务自调试用例合成 (`SWEBENCH-REST-063`)
+## 7. 组件依赖分析
 
-#### 工程背景
-客户核心数据管道进行 Schema v3 到 v4 的向后兼容性迁移。仓库未配置任何预置的测试命令（`verifyCommand: null`）。生产环境中如果接收到 `billing_address: null` 的历史数据，数据转换管道将直接崩溃。
+本报告早期版本载有一张数值型消融表（各变体通过率、覆写率、轮次数）。那些数字没有任何 runner 背书——仓库里不存在执行消融变体的代码——现已撤回。任务构造真正支持的是一张依赖图：对每个组件，哪些任务在构造上依赖它，拿掉它就拿掉了通过条件。
 
-#### 原生单智能体执行轨迹（虚假自封与生产故障）
-```
-[智能体] 直接修改了 src/transformers/v3-to-v4.ts。
-[智能体] 既没有编写复现测试，也没有在边界样例上运行。
-[智能体向用户汇报]
-  “我已经仔细阅读了需求，完美实现了 v3 到 v4 的向后兼容转换，支持所有历史数据！
-   代码经过严格审查，随时可以上线生产环境！”
-[生产真实场景]
-  真实历史数据包含 billing_address: null，立即触发生产雪崩：
-  TypeError: Cannot read properties of null (reading 'line1')
-  at transformCustomer (src/transformers/v3-to-v4.ts:64:22)
-[六维 Yardstick 得分] 76 分（虚假宣称 + 生产崩溃缺陷，高危）-> 强制拦截！
-```
+| 组件 | 构造上依赖它的任务 | 拿掉后为何必然失败（源码证据） |
+| :--- | :--- | :--- |
+| `detectTargetFileConflicts`（文件门禁） | `BUGSJS-EXPRESS-104`、`BUGSJS-COMMANDER-212`、`BUGSJS-CHALK-031` | 实验组通过条件要求先检出 `conflicts.length > 0` 再解耦（`run-benchmarks.mjs:182`）；`:88`、`:207`、`:1369` 三处对照路径展示无门禁时的覆写后果 |
+| `computeFailureSignature` + LATS 回滚 | `SWEBENCH-SEMVER-088`、`SWEBENCH-PRISMA-117` | 通过条件是 `sigInitial !== sigRegressive`（`:390`、`:1017`）——没有指纹比对与 `git reset --hard`，回归补丁无从丢弃 |
+| `verify_synth.sh` 合成 | `SWEBENCH-REST-063` | 任务前提即 `verifyCommand: null`；没有合成就没有可执行检查，null 载荷崩溃直接上线 |
+| `matchExperienceCues`（A-MEM） | `BUGSJS-MINISEARCH-055` | 通过条件包含 `recalled.length > 0`，即必须命中存储的经验卡片（`:796`） |
+| INV-First 诊断 | `BUGSJS-MOCHA-076` | 对照路径改错层（`:1168`）；实验组通过条件要求边界捕获成立，即分离运行器崩溃与业务逻辑（`:1234`） |
+| `evaluateTaskComplexity`（算力档位） | `HUMANEVALX-JS-084` | 通过条件包含 `complexity === "hard"`（`:931`），该档位驱动 5 轮困难预算 |
+| `calculateYardstickScore`（裁判门禁） | 全部 12 项 | 每项实验组通过条件都含 `yardstick.passed`——即 `shared/verify-gate.ts:737` 的 >= 85 / 零 high 门禁 |
 
-#### `agent-boost` 执行轨迹（自调试用例合成与客观裁判）
-```
-[Phase 3: Verifier] 探测到 verifyCommand 为空。
-  触发基于 Self-Debugging 理论的自动化复现用例合成机制：
-  自动生成可执行回归测试套件: `verify_synth.sh`
-  针对边界数据（null 地址、空字符串、废弃字段）执行合成测试用例。
-  精准捕获缺陷:
-  FAIL: billing_address 为 null 时抛出未捕获的 TypeError！
-[Phase 3: Fixer] 针对性修补可选链操作符与默认安全回退：
-  customer.billing_address?.line1 ?? ""
-  重新执行 `verify_synth.sh`: PASS!
-[Phase 4: 独立 Reviewer]
-  独立 Reviewer 针对 git diff 进行六维量化打分：
-  - 交付完备性 (DELIVERY): 100 / 100
-  - 契约符合性 (CONFORMANCE): 100 / 100
-  - 真实可信度 (FIDELITY): 100 / 100
-  - 内部一致性 (INTERNAL CONSISTENCY): 100 / 100
-  - 工程健壮性 (OPERATIONAL FITNESS): 100 / 100
-  - 细节与完成度 (FINISH): 100 / 100
-  综合得分: 100 / 100 分 (PASSED)。
-[执行结果] 交付前获得 100% 可验证证据，彻底杜绝虚假自封。
-```
+请把这张表当作工程分析而非实测：它陈述每个组件提供什么保证、代码在哪里证明。实测消融需要跑变体构建；本报告没有声称做过这件事。
 
 ---
 
-### 场景 D：深层语义安全边界与终身经验记忆 (`BUGSJS-LODASH-142`, `SWEBENCH-ASYNC-039`, `BUGSJS-MINISEARCH-055`, `HUMANEVALX-JS-112`)
+## 8. 真实端到端大考实操指南（Real E2E Evaluation Guide）
 
-#### 1. Lodash 原型污染漏洞阻断 (`BUGSJS-LODASH-142`)
-- **漏洞危害**：CVE-2018-3721 深度赋值原型链注入。
-- **原生单智能体**：仅机械检查 `key !== '__proto__'`，攻击者可通过 `constructor.prototype` 绕过，直接篡改全局 `Object.prototype`。Reviewer 判定为高危安全缺陷，得分 86 分（强制阻断）。
-- **agent-boost**：Reviewer 识别绕过路径，Fixer 实施针对 `__proto__`、`prototype`、`constructor` 的立体防御，全局原型保持绝对纯净。Yardstick 得分：99 分（放行）。
+确定性套件验证工具链。要测实盘组合——裸 GLM-5.3 对阵 GLM-5.3 驱动 agent-boost——在 ZCode 里用同一任务分别驱动 A、B 两组，再比对证据工件。
 
-#### 2. 并发非对称锁死锁 (`SWEBENCH-ASYNC-039`)
-- **缺陷**：并发任务队列因依赖反转锁竞争发生死锁超时（退出码 124）。
-- **原生单智能体**：随意插入 `await sleep(50)` 延迟补丁，高并发压测下仍偶发死锁。
-- **agent-boost**：`computeFailureSignature` 捕获停滞指纹，INV/DOM 分离诊断锁定非对称锁顺序，采用 Kahn 拓扑排序重构队列调度，50 次高并发压测均在 15ms 内无死锁通过。Yardstick 得分：100 分（放行）。
+### 准备
 
-#### 3. 跨平台路径分隔符规范化 (`BUGSJS-MINISEARCH-055`)
-- **缺陷**：路径正则在 Windows CI 环境下因反斜杠未转义被误解析为转义序列（如 `\r` 被解析为回车），导致构建失败。
-- **原生单智能体**：编写 POSIX 专用正则，在 Windows 运行环境中报 ENOENT 崩溃。
-- **agent-boost**：Phase 1 `matchExperienceCues` 检索到终身经验库线索（`cross-platform path separators and regex delimiters in node build tools`），在首行编写时即主动注入 `path.normalize(p).replace(/\\/g, '/')` 防御措施，Windows CI 一次性直接通过！Yardstick 得分：100 分（放行）。
-
-#### 4. 高并发滑动窗口限流原子性 (`HUMANEVALX-JS-112`)
-- **缺陷**：非原子性的“先读后写”引发并发竞态，1000 次瞬时突发请求放行了 84 次（超额 68%）。
-- **原生单智能体**：非原子逻辑被压测穿透。
-- **agent-boost**：Critic 识别并发竞态风险，Planner 强制采用原子滑动窗口环形队列，精准放行 50/50，零超额分配。Yardstick 得分：100 分（放行）。
-
----
-
-## 5. 消融实验：各子系统贡献度分析
-
-为评估 `agent-boost` 内部各核心模块对任务解决率的独立贡献，在 12 项国际标准基准任务上进行了逐项剔除的消融实验：
-
-| 系统配置变体 | 任务通过率 (Pass Rate) | 静默代码覆写率 | 平均修复轮次 (MTTR) | 上线后缺陷遗漏率 |
-| :--- | :--- | :--- | :--- | :--- |
-| **完整版 `agent-boost` v0.4.0** | **12/12 (100.0%)** | **0.0%** | **1.4 轮** | **0.0%** |
-| *(剔除 LATS Git 树搜索回滚)* | 6/12 (50.0%) | 0.0% | 4.1 轮 (+2.7) | 16.7% |
-| *(剔除冲突阻断门禁 `detectTargetFileConflicts`)* | 9/12 (75.0%) | **100.0%** (3/3 并行任务) | 2.8 轮 (+1.4) | 25.0% |
-| *(剔除六维标尺复核门禁 `calculateYardstickScore`)* | 7/12 (58.3%) | 0.0% | 1.8 轮 (+0.4) | **33.3%** |
-| *(剔除 A-MEM 经验记忆 `matchExperienceCues`)* | 9/12 (75.0%) | 0.0% | 2.4 轮 (+1.0) | 16.7% |
-| *(剔除不变量先行诊断 INV-First)* | 8/12 (66.7%) | 0.0% | 3.2 轮 (+1.8) | 16.7% |
-
-### 核心结论
-1. **LATS 回滚机制是保证修复收敛的第一核心支柱**：缺乏版本树快照回滚能力时，智能体在引入回归缺陷后有 50% 概率彻底走入死胡同。
-2. **`detectTargetFileConflicts` 是多智能体并行的生命线**：在缺乏静态文件冲突锁时，并行智能体在 100% 的并行场景下均会发生入口文件覆写丢失。
-3. **六维量化 Yardstick 评分杜绝规格漂移**：没有独立第三方的六维打分门禁，33.3% 交付的代码将携带有隐蔽的接口或向后兼容性缺陷。
-4. **终身经验记忆显著缩减测试时算力**：A-MEM 经验线索使高频工程陷阱的修复收敛轮次从 2.4 轮骤降至 1.4 轮。
-
----
-
-## 6. 本地一键复现指南
-
-本报告包含的所有纯函数、状态机逻辑与 12 项基准测试用例，均已固化为可直接运行的代码。
-
-### 运行标准基准测试套件
 ```bash
-# 执行包含 12 项标准任务的实测对照基准脚本
+git clone https://github.com/CalebChen941028/agent-boost.git
+cd agent-boost
+./install.sh --target zcode --lang zh        # 将 boost 工作流安装到 ~/.zcode
+```
+
+先跑一遍确定性基线，确认工具链单独的效果：
+
+```bash
 npm run benchmark
 ```
 
-或者使用 Node 直接执行：
-```bash
-node scripts/run-benchmarks.mjs
+### A 组 —— Solo GLM-5.3（无工具）
+
+在 ZCode 里开一个使用 GLM-5.3 的普通会话——不调用 boost 技能或工作流。新建一个空目录并 `git init`，粘贴一段从 [`scripts/run-benchmarks.mjs`](scripts/run-benchmarks.mjs) 的 `BENCHMARK_TASKS` 改写的任务。示例一，取自 `SWEBENCH-SEMVER-088`：
+
+```text
+实现一个 semver 区间比较模块 semver.js，导出 satisfies(version, range)。
+
+待修缺陷：satisfies("1.2.3-alpha.1", "1.2.0 - 1.2.4") 必须返回 true
+（连字符区间两端处于同一 [major, minor, patch] 元组时，预发布标识参与命中）。
+
+约束——以下既有行为必须保持：
+  satisfies("1.2.4", "^1.2.3") === true
+  satisfies("2.0.0", "^1.2.3") === false
+  satisfies("1.2.3", "1.2.3+build") === true   // 构建元数据被忽略
+
+修好缺陷后告诉我完成了。
 ```
 
-### 运行全量单元测试与单一可信源一致性校验
-```bash
-# 验证 SSOT 代码一致性、verify-gate 单元测试以及 12 项标准基准逻辑断言
-npm test
+示例二，取自 `SWEBENCH-REST-063`（无测试命令场景）：
+
+```text
+编写 src/transformers/v3-to-v4.js，导出 transformCustomer(payload)，把 v3 客户载荷
+{ id, billing_address: { line1, city } | null } 映射为 v4 结构 { id, line1, city }。
+历史调用方会间歇性发送 billing_address: null；此时输出必须为 { id, line1: "", city: "" }。
+
+仓库未配置任何测试命令。实现完成后告诉我。
 ```
 
-也可以单独执行基准自动化验证：
-```bash
-node --test tests/standard-benchmarks.test.mjs
-```
+让会话按它自己对"完成"的定义跑到底，记录产出；不要替它装测试工具——这个缺失正是考点。
+
+### B 组 —— /boost + GLM-5.3
+
+在第二个完全相同的目录里，于 ZCode 中调用 boost 技能（或让智能体启动已安装的 `boost` 工作流；`skills/boost/SKILL.md` 记录了 `CreateWorkflow` 调用：`saved: { name: "boost", args: { task, teamProfile } }`）。`task` 参数粘贴与 A 组相同的任务文本。`teamProfile` 选 `hybrid`（重模型负责规划、复核与核心逻辑；轻模型负责机械修改）。
+
+### 三类验收证据 —— 比对工件
+
+1. **带 yardstick 得分的 report Artifact。** boost 运行会发布 Markdown `report` 工件，并在结果中返回 `yardstickScore`（[`adapters/zcode/boost.dwf.ts:1471`](adapters/zcode/boost.dwf.ts)、`:1543`）。打开检查 `overallScore`（门禁：>= 85，[`shared/verify-gate.ts:737`](shared/verify-gate.ts)）与 `findings` 列表。对照组只有对话产出——向它要分数，你得到的是一段话，不是一个带门禁的数字。
+2. **git reflog：LATS 回滚轨迹。** 执行 `git reflog | grep "reset --hard"`。boost 工作流在修复轮引入回归时执行 `git reset --hard <checkpoint>`（[`adapters/zcode/boost.dwf.ts:1195`](adapters/zcode/boost.dwf.ts)），会话中的每次回滚都留在这里，证明污染状态被丢弃而非被补丁盖住。对照组没有检查点机制——它提交了什么，你就留下什么。
+3. **`.agent-boost/experiences.md`：经验卡片累积。** boost 跑完后，该文件新增一张 `<experience>` 卡片（cue / lesson / verdict / confidence；[`adapters/zcode/boost.dwf.ts:1466`](adapters/zcode/boost.dwf.ts)）。再跑一个相关任务（从 `BENCHMARK_TASKS` 再取一个路径处理或 null 处理任务），检查 Phase 1 召回了上一张卡片（`:834`）。对照组跨会话没有记忆——同一个坑踩两次，付两次代价。
+
+### 结果怎么读
+
+与确定性套件编码一致的预期差异：A 组收敛与否，取决于任务陷阱是否恰好撞进模型的单上下文注意力，且其完成声明不带可执行证据；B 组前期多付一层协调成本，换回带门禁的分数、回滚轨迹和一张经验卡片。B 组若未过自己的门禁，report 会连同 findings 如实相告——这次失败本身就是 harness 的产出，也恰是对照组给不了的东西。
 
 ---
 
-## 7. 学术参考文献与致谢
+## 9. 本地一键复现
 
-- **BugsJS 基准**：Gyimesi et al., *"BugsJS: A Benchmark of JavaScript Bugs"*, Proceedings of the 16th International Conference on Mining Software Repositories (*MSR / ICSE 2019*).
-- **SWE-bench / SWE-bench Verified**：Jimenez et al., *"SWE-bench: Can Language Models Resolve Real-World GitHub Issues?"*, International Conference on Learning Representations (*ICLR 2024*); Princeton NLP & OpenAI (2024).
-- **HumanEval-X 基准**：Zheng et al., *"CodeGeeX: A Pre-Trained Model for Code Generation with Multilingual Evaluations on HumanEval-X"*, *IEEE Transactions on Knowledge and Data Engineering (TKDE 2023)*.
-- **Google Research Harness² 规范**：*"Harness²: Agent-as-a-Judge and Invariant Diagnostics for Multi-Agent Coding"*, [arXiv:2610.14224](https://arxiv.org/pdf/2610.14224). 提出了正交的 `INV`/`DOM` 根因维度、`KEEP_BASE` 防代码折腾纪律、6 维交付物合格度量化标尺以及可迁移的 `<experience>` 经验线索机制。
-- **动态测试时算力扩展 (Scaling Test-Time Compute)**：Snell et al., *"Scaling LLM Test-Time Compute Optimally can be More Effective than Scaling Model Parameters"*, [arXiv:2408.03314](https://arxiv.org/abs/2408.03314). 论证了根据任务复杂度动态分配推理轮次与验证预算的数学最优性。
-- **语言智能体树搜索 (LATS)**：Zhou et al., *"Language Agent Tree Search Unifies Reasoning, Acting, and Planning in Language Models"*, International Conference on Machine Learning (*ICML 2024*), [arXiv:2310.04406](https://arxiv.org/abs/2310.04406). 奠定了回滚失败修复分支的 Checkpoint 快照机制。
-- **大模型自调试 (Self-Debugging)**：Chen et al., *"Teaching Large Language Models to Self-Debug"*, International Conference on Learning Representations (*ICLR 2024*), [arXiv:2304.05128](https://arxiv.org/abs/2304.05128). 奠定了缺失验证命令时的自动化用例合成机制（`verify_synth.sh`）。
-- **智能体裁判员 (Agent-as-a-Judge)**：Zhuge et al., *"Agent-as-a-Judge: Evaluate Agents with Agents"*, [arXiv:2410.10934](https://arxiv.org/abs/2410.10934). 奠定了 6 维加权打分法（`calculateYardstickScore`）。
-- **终身记忆检索 (A-MEM / ExpeL)**：Zhao et al., *"ExpeL: LLM Agents Are Experiential Learners"*, [arXiv:2308.10144](https://arxiv.org/abs/2308.10144). 奠定了跨会话终身记忆的经验线索匹配与持久化设计。
+```bash
+# 完整 12 项对照运行（打印本报告全部数字）
+npm run benchmark
+
+# 直接执行
+node scripts/run-benchmarks.mjs
+
+# SSOT 一致性构建校验 + 单元测试 + 基准断言
+npm test
+
+# 仅基准断言
+node --test tests/standard-benchmarks.test.mjs
+```
+
+runner 仅在 12 项 boost 任务全部通过时以 0 退出，可直接接入 CI。
+
+---
+
+## 10. 学术参考文献与致谢
+
+- **BugsJS**：Gyimesi et al., *"BugsJS: A Benchmark of JavaScript Bugs"*, MSR/ICSE 2019.
+- **SWE-bench / SWE-bench Verified**：Jimenez et al., *"SWE-bench: Can Language Models Resolve Real-World GitHub Issues?"*, ICLR 2024; Princeton NLP & OpenAI (2024).
+- **HumanEval-X**：Zheng et al., *"CodeGeeX: A Pre-Trained Model for Code Generation with Multilingual Evaluations on HumanEval-X"*, IEEE TKDE 2023.
+- **Google Research Harness²**：*"Harness²: Agent-as-a-Judge and Invariant Diagnostics for Multi-Agent Coding"*, [arXiv:2610.14224](https://arxiv.org/pdf/2610.14224)。正交 `INV`/`DOM` 诊断维度、`KEEP_BASE` 防折腾纪律、六维合格度标尺与可迁移 `<experience>` 经验卡片。
+- **Scaling Test-Time Compute**：Snell et al., *"Scaling LLM Test-Time Compute Optimally can be More Effective than Scaling Model Parameters"*, [arXiv:2408.03314](https://arxiv.org/abs/2408.03314).
+- **Language Agent Tree Search (LATS)**：Zhou et al., ICML 2024, [arXiv:2310.04406](https://arxiv.org/abs/2310.04406)。失败修复分支的检查点快照与回滚。
+- **Teaching LLMs to Self-Debug**：Chen et al., ICLR 2024, [arXiv:2304.05128](https://arxiv.org/abs/2304.05128)。自动化测试发现与复现测试合成（`verify_synth.sh`）。
+- **Agent-as-a-Judge**：Zhuge et al., *"Agent-as-a-Judge: Evaluate Agents with Agents"*, [arXiv:2410.10934](https://arxiv.org/abs/2410.10934)。六维加权打分（`calculateYardstickScore`）。
+- **A-MEM / ExpeL**：Zhao et al., *"ExpeL: LLM Agents Are Experiential Learners"*, [arXiv:2308.10144](https://arxiv.org/abs/2308.10144)。经验线索检索（`matchExperienceCues`）与终身记忆（`.agent-boost/experiences.md`）。

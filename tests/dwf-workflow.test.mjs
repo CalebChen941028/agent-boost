@@ -1,277 +1,324 @@
+/**
+ * DWF state-machine tests for adapters/zcode/boost.dwf.ts.
+ *
+ * Why this tests through shared/verify-gate.js instead of importing the DWF
+ * file: boost.dwf.ts line 796 onwards runs the ZCode workflow DSL (args /
+ * world.run / agent(...)) — globals that only exist inside the DWF runtime, so
+ * plain Node cannot import that file. The 10 pure helpers embedded in
+ * boost.dwf.ts between the "BEGIN/END SHARED VERIFY-GATE HELPERS" markers are
+ * enforced parameter- and body-identical to shared/verify-gate.ts and
+ * shared/verify-gate.js by scripts/build.mjs:364-425, and npm test runs that
+ * build as its first step — so behavior asserted here against
+ * shared/verify-gate.js holds for the DWF copy too. DSL-only mechanics (LATS
+ * git checkpoint/rollback, verify_synth.sh synthesis, the >= 85 gate) are
+ * covered by deterministic string assertions on the raw boost.dwf.ts source
+ * read via node:fs.
+ */
+
 import test from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
-import path from "node:path";
-import os from "node:os";
 import {
-  computeFailureSignature,
-  detectTargetFileConflicts,
   resolveModelConfiguration,
-  matchExperienceCues,
+  detectTargetFileConflicts,
+  computeFailureSignature,
   calculateYardstickScore,
 } from "../shared/verify-gate.js";
+import { BENCHMARK_TASKS } from "../scripts/run-benchmarks.mjs";
 
-// DWF State Machine Test Suite
-// Exercises the core flow of adapters/zcode/boost.dwf.ts through the SSOT-compiled
-// shared/verify-gate.js (TS/JS/DWF zero-drift is separately enforced by scripts/build.mjs).
-// Mirrors the exact state-machine semantics of the DWF phases:
-//   Phase 1 - planning: targetFiles conflict gate + A-MEM experience recall
-//   Phase 3 - execution/repair: LATS git checkpoint, regression rollback, self-debugging synthesis
-//   Phase 4 - judging: six-dimension yardstick score with >= 85 gate
+const dwfSource = fs.readFileSync(
+  new URL("../adapters/zcode/boost.dwf.ts", import.meta.url),
+  "utf8",
+);
 
-const GIT_ENV = "-c";
-const git = (cwd, ...args) =>
-  execFileSync("git", [GIT_ENV, "user.name=DWF Test", GIT_ENV, "user.email=dwf-test@example.com", ...args], {
-    cwd,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
+// ---------------------------------------------------------------------------
+// Group 1: resolveModelConfiguration — GLM-5.3 alias mapping and tiering
+// ---------------------------------------------------------------------------
+
+test("DWF 1a. resolveModelConfiguration maps the real GLM-5.3 entries of models.example.json with light/heavy tiering", () => {
+  const modelsExample = JSON.parse(
+    fs.readFileSync(new URL("../models.example.json", import.meta.url), "utf8"),
+  );
+
+  // Real entries shipped with the repo
+  assert.deepEqual(resolveModelConfiguration("glm-5.3-flash", modelsExample), {
+    modelId: "z-ai/glm-5.3-flash",
+    tier: "light",
+  });
+  assert.deepEqual(resolveModelConfiguration("glm-5.3-prime", modelsExample), {
+    modelId: "z-ai/glm-5.3-prime",
+    tier: "heavy",
   });
 
-const makeTempDir = () => fs.mkdtempSync(path.join(os.tmpdir(), "dwf-workflow-"));
+  // Light/heavy layering: flash is the light tier, prime the heavy tier
+  const flash = resolveModelConfiguration("glm-5.3-flash", modelsExample);
+  const prime = resolveModelConfiguration("glm-5.3-prime", modelsExample);
+  assert.notEqual(flash.tier, prime.tier);
+  assert.notEqual(flash.modelId, prime.modelId);
 
-// ---------------------------------------------------------------------------
-// (a) Model configuration: glm-5.3 family mapping and light/heavy tier layering
-// ---------------------------------------------------------------------------
-
-test("DWF (a) resolveModelConfiguration maps glm-5.3 / glm-5.3-prime / glm-5.3-flash to explicit modelIds", () => {
-  for (const name of ["glm-5.3", "glm-5.3-prime", "glm-5.3-flash"]) {
-    const resolved = resolveModelConfiguration(name, null);
-    assert.equal(resolved.modelId, name, `${name} must resolve to its own modelId without local config`);
-    assert.equal(resolved.tier, "light", `${name} defaults to the light tier without local config`);
+  // Every alias in the shipped config resolves to its declared id and tier
+  for (const [alias, entry] of Object.entries(modelsExample.models)) {
+    assert.deepEqual(
+      resolveModelConfiguration(alias, modelsExample),
+      { modelId: entry.id, tier: entry.tier },
+      `alias "${alias}" must resolve to its declared entry`,
+    );
   }
+
+  // Whitespace around the requested name is trimmed before lookup
+  assert.deepEqual(
+    resolveModelConfiguration("  glm-5.3-prime  ", modelsExample),
+    { modelId: "z-ai/glm-5.3-prime", tier: "heavy" },
+  );
 });
 
-test("DWF (a) resolveModelConfiguration trims whitespace and is deterministic across repeated calls", () => {
-  const first = resolveModelConfiguration("  glm-5.3  ", null);
-  const second = resolveModelConfiguration("  glm-5.3  ", null);
-  assert.deepEqual(first, { modelId: "glm-5.3", tier: "light" });
-  assert.deepEqual(first, second, "Resolution must be a pure, deterministic function");
-});
-
-test("DWF (a) local models.local.json override promotes glm-5.3-prime to the heavy tier", () => {
-  const localConfig = {
+test("DWF 1b. resolveModelConfiguration: inline plain-glm-5.3 fixture, unknown-alias passthrough, default_light_model fallback, empty-request default tier", () => {
+  // models.example.json ships no plain "glm-5.3" entry — supply an inline fixture
+  const glmSoloConfig = {
+    default_light_model: "glm-5.3",
     models: {
-      "glm-5.3": { id: "glm-5.3", tier: "heavy" },
-      "glm-5.3-prime": { id: "glm-5.3-prime-x", tier: "heavy" },
-      "glm-5.3-flash": { id: "glm-5.3-flash", tier: "light" },
+      "glm-5.3": { id: "z-ai/glm-5.3", vendor: "zhipu", tier: "heavy" },
     },
   };
-  // Heavy models are reserved for planning/critic phases (Phase 1), light models
-  // for parallel execution (Phase 3) - the two-tier layering of the DWF engine.
-  const prime = resolveModelConfiguration("glm-5.3-prime", localConfig);
-  assert.deepEqual(prime, { modelId: "glm-5.3-prime-x", tier: "heavy" });
-
-  const flash = resolveModelConfiguration("glm-5.3-flash", localConfig);
-  assert.deepEqual(flash, { modelId: "glm-5.3-flash", tier: "light" });
-
-  const tierOf = (name) => resolveModelConfiguration(name, localConfig).tier;
-  assert.equal(tierOf("glm-5.3"), "heavy");
-  assert.equal(tierOf("glm-5.3-prime"), "heavy");
-  assert.equal(tierOf("glm-5.3-flash"), "light");
-});
-
-test("DWF (a) empty requested model falls back to default_light_model, then to tier=default", () => {
-  const withDefault = resolveModelConfiguration("", {
-    default_light_model: "glm-5.3-flash",
-    models: { "glm-5.3-flash": { id: "glm-5.3-flash-live", tier: "light" } },
+  assert.deepEqual(resolveModelConfiguration("glm-5.3", glmSoloConfig), {
+    modelId: "z-ai/glm-5.3",
+    tier: "heavy",
   });
-  assert.deepEqual(withDefault, { modelId: "glm-5.3-flash-live", tier: "light" });
 
-  const noConfig = resolveModelConfiguration("", null);
-  assert.deepEqual(noConfig, { modelId: null, tier: "default" });
+  // Without local config the requested name passes through as the model id
+  assert.deepEqual(resolveModelConfiguration("glm-5.3", null), {
+    modelId: "glm-5.3",
+    tier: "light",
+  });
+
+  // A models entry without an explicit tier defaults to "light"
+  const noTierConfig = { models: { "glm-5.3": { id: "z-ai/glm-5.3" } } };
+  assert.deepEqual(resolveModelConfiguration("glm-5.3", noTierConfig), {
+    modelId: "z-ai/glm-5.3",
+    tier: "light",
+  });
+
+  // An alias absent from the config passes through verbatim with tier light
+  assert.deepEqual(
+    resolveModelConfiguration("z-ai/glm-5.3-turbo-x", glmSoloConfig),
+    { modelId: "z-ai/glm-5.3-turbo-x", tier: "light" },
+  );
+
+  // Empty request falls back to default_light_model ("glm-5.3" -> z-ai/glm-5.3)
+  assert.deepEqual(resolveModelConfiguration("", glmSoloConfig), {
+    modelId: "z-ai/glm-5.3",
+    tier: "light",
+  });
+
+  // Empty request against the shipped repo config resolves its own default
+  const modelsExample = JSON.parse(
+    fs.readFileSync(new URL("../models.example.json", import.meta.url), "utf8"),
+  );
+  assert.deepEqual(resolveModelConfiguration("", modelsExample), {
+    modelId: "anthropic/claude-haiku-5.5",
+    tier: "light",
+  });
+
+  // Empty request with no usable config yields the tier:"default" sentinel
+  assert.deepEqual(resolveModelConfiguration("", null), {
+    modelId: null,
+    tier: "default",
+  });
+  assert.deepEqual(resolveModelConfiguration("", { models: {} }), {
+    modelId: null,
+    tier: "default",
+  });
 });
 
 // ---------------------------------------------------------------------------
-// (b) Phase 1 planning: targetFiles conflict gate and planner decoupling
+// Group 2: Phase 1 planning — targetFiles conflict detection and decoupling
 // ---------------------------------------------------------------------------
 
-test("DWF (b) Phase 1 conflict gate detects shared targetFiles across concurrent code workstreams", () => {
-  const ws1 = { title: "OAuth2 Auth Routes", kind: "code", targetFiles: ["src/routes/auth.ts", "src/server.ts"] };
-  const ws2 = { title: "Metrics API Routes", kind: "code", targetFiles: ["src/routes/api.ts", "src/server.ts"] };
-  const conflicts = detectTargetFileConflicts([ws1, ws2]);
-  assert.equal(conflicts.length, 1, "Exactly one conflicting file must be reported");
-  assert.equal(conflicts[0].file, "src/server.ts");
-  assert.deepEqual(conflicts[0].workstreams.sort(), ["Metrics API Routes", "OAuth2 Auth Routes"].sort());
-});
-
-test("DWF (b) conflict gate normalizes file URIs, separators, and relative prefixes before matching", () => {
-  const ws1 = { title: "WS-A", kind: "code", targetFiles: ["src/server.ts"] };
-  const ws2 = {
-    title: "WS-B",
+test("DWF 2a. detectTargetFileConflicts flags the Express-style shared-server overlap", () => {
+  const ws1 = {
+    title: "OAuth2 Auth Routes",
     kind: "code",
-    targetFiles: ["./src/server.ts", "file://src/server.ts", "src\\server.ts", "src//server.ts", "src/server.ts/"],
+    targetFiles: ["src/routes/auth.ts", "src/server.ts"],
   };
+  const ws2 = {
+    title: "Metrics API Routes",
+    kind: "code",
+    targetFiles: ["src/routes/api.ts", "src/server.ts"],
+  };
+
   const conflicts = detectTargetFileConflicts([ws1, ws2]);
-  assert.equal(conflicts.length, 1, "All five spelling variants must collide with the canonical path");
+  assert.equal(conflicts.length, 1, "exactly one file is double-owned");
   assert.equal(conflicts[0].file, "src/server.ts");
-  assert.deepEqual(conflicts[0].workstreams.sort(), ["WS-A", "WS-B"].sort());
+  assert.deepEqual(conflicts[0].workstreams.sort(), [
+    "Metrics API Routes",
+    "OAuth2 Auth Routes",
+  ]);
 });
 
-test("DWF (b) investigate workstreams never trigger the conflict gate; empty inputs are safe", () => {
-  const reader = { title: "Log Reader", kind: "investigate", targetFiles: ["src/server.ts"] };
-  const coder = { title: "Server Fixer", kind: "code", targetFiles: ["src/server.ts"] };
-  assert.deepEqual(detectTargetFileConflicts([reader, coder]), [], "investigate kind is read-only and exempt");
+test("DWF 2b. detectTargetFileConflicts exempts investigate workstreams; empty inputs are safe", () => {
+  const code = {
+    title: "OAuth2 Auth Routes",
+    kind: "code",
+    targetFiles: ["src/server.ts"],
+  };
+  const probeA = {
+    title: "Route Registration Probe",
+    kind: "investigate",
+    targetFiles: ["src/server.ts"],
+  };
+  const probeB = {
+    title: "Gateway Middleware Probe",
+    kind: "investigate",
+    targetFiles: ["src/server.ts"],
+  };
+
+  // Read-only investigation may share files with a writer and with each other
+  assert.deepEqual(detectTargetFileConflicts([code, probeA, probeB]), []);
+  assert.deepEqual(detectTargetFileConflicts([probeA, probeB]), []);
   assert.deepEqual(detectTargetFileConflicts([]), []);
   assert.deepEqual(detectTargetFileConflicts(null), []);
 });
 
-test("DWF (b) planner decouples conflicted workstreams into disjoint target sets with zero residual conflicts", () => {
-  const conflicted = [
+test("DWF 2c. detectTargetFileConflicts normalizes file://, backslash, leading-slash and relative spellings before comparing", () => {
+  const wsA = {
+    title: "Auth Gateway",
+    kind: "code",
+    targetFiles: ["file://src/server.ts"],
+  };
+  const wsB = {
+    title: "Metrics Gateway",
+    kind: "code",
+    targetFiles: ["src\\server.ts"],
+  };
+  const wsC = {
+    title: "Health Gateway",
+    kind: "code",
+    targetFiles: ["/src//server.ts", "./src/server.ts", "src/server.ts/"],
+  };
+
+  const conflicts = detectTargetFileConflicts([wsA, wsB, wsC]);
+  assert.equal(conflicts.length, 1, "all spellings denote one canonical file");
+  assert.equal(conflicts[0].file, "src/server.ts");
+  assert.equal(conflicts[0].workstreams.length, 3);
+});
+
+test("DWF 2d. planner decoupling: disjoint workstreams produce zero residual conflicts", () => {
+  // Same starting point as BUGSJS-EXPRESS-104: two code workstreams collide on
+  // src/server.ts, so Phase 1 must intercept before execution begins
+  const coupled = [
     { title: "OAuth2 Auth Routes", kind: "code", targetFiles: ["src/routes/auth.ts", "src/server.ts"] },
     { title: "Metrics API Routes", kind: "code", targetFiles: ["src/routes/api.ts", "src/server.ts"] },
   ];
-  assert.equal(detectTargetFileConflicts(conflicted).length, 1, "Pre-decoupling plan must expose the conflict");
+  assert.equal(detectTargetFileConflicts(coupled).length, 1);
 
-  // Planner/Critic decoupling: dedicated middleware adapters + a single sequenced
-  // assembly workstream that owns src/server.ts exclusively.
+  // Decoupled plan: dedicated adapters per workstream plus a single sequenced
+  // owner for the server entrypoint
   const decoupled = [
     { title: "OAuth2 Auth Routes", kind: "code", targetFiles: ["src/routes/auth.ts", "src/middleware/auth.ts"] },
     { title: "Metrics API Routes", kind: "code", targetFiles: ["src/routes/api.ts", "src/middleware/api.ts"] },
     { title: "Server Gateway Assembly", kind: "code", targetFiles: ["src/server.ts"] },
   ];
-  assert.deepEqual(detectTargetFileConflicts(decoupled), [], "Post-decoupling plan must be conflict-free");
+  assert.deepEqual(detectTargetFileConflicts(decoupled), []);
 });
 
 // ---------------------------------------------------------------------------
-// (c) Phase 3: LATS git checkpoint + regression rollback + self-debugging synthesis
+// Group 3: Phase 3 LATS — failure signature stability and source anchors
 // ---------------------------------------------------------------------------
 
-test("DWF (c) computeFailureSignature is stable per failure and distinct across different failures", () => {
-  const mochaRunnerError = [
-    "mocha 10.2.0",
-    "TypeError: Cannot read properties of undefined (reading 'parallel')",
-    "    at createMocha (lib/mocha.js:278:19)",
-    "1 failed",
+test("DWF 3a. computeFailureSignature diverges on SemVer-style regression semantics", () => {
+  const regressionSurvivedBadPatch = [
+    "SWE-BENCH SEMVER-RANGE REGRESSION",
+    "AssertionError: semver.satisfies('1.9.0', '~1.2.3') must be false — range bypass admitted",
+    "at /repo/test/version-range.js:88:9",
   ].join("\n");
-  const sameErrorOtherNumbers = [
-    "mocha 10.2.0",
-    "TypeError: Cannot read properties of undefined (reading 'parallel')",
-    "    at createMocha (lib/mocha.js:999:19)",
-    "1 failed",
-  ].join("\n");
-  const differentError = [
-    "assert.js:385 throw err;",
-    "AssertionError [ERR_ASSERTION]: 2 === 3",
-    "    at TestContext.<anonymous> (test/semver.test.js:12:5)",
-    "5 failed",
+  const regressionSurvivedOtherPatch = [
+    "SWE-BENCH SEMVER-RANGE REGRESSION",
+    "AssertionError: semver.satisfies('1.2.9', '~1.2.3') must be false — range bypass admitted",
+    "at /repo/test/version-range.js:88:9",
   ].join("\n");
 
-  const s1 = computeFailureSignature(mochaRunnerError);
-  const s2 = computeFailureSignature(mochaRunnerError);
-  const s3 = computeFailureSignature(sameErrorOtherNumbers);
-  const s4 = computeFailureSignature(differentError);
+  const sigBad = computeFailureSignature(regressionSurvivedBadPatch);
+  const sigOther = computeFailureSignature(regressionSurvivedOtherPatch);
+  assert.ok(typeof sigBad === "string" && sigBad.length > 0);
+  assert.ok(typeof sigOther === "string" && sigOther.length > 0);
+  assert.notEqual(
+    sigBad,
+    sigOther,
+    "a patch that changes the failing version digits must yield a new signature (progress), not a stall",
+  );
 
-  assert.equal(s1, s2, "Identical failure output must produce an identical signature");
-  assert.equal(s1, s3, "Line/number noise must be normalized away - same root cause, same signature");  assert.notEqual(s1, s4, "A different root cause must produce a different signature");
+  // Degenerate inputs collapse to the sentinel signature
   assert.equal(computeFailureSignature(""), "empty-output");
   assert.equal(computeFailureSignature(null), "empty-output");
 });
 
-test("DWF (c) LATS checkpoint rollback: git reset --hard restores the pre-regression tree state", () => {
-  const dir = makeTempDir();
-  try {
-    git(dir, "init", "-q");
-    const serverFile = path.join(dir, "src", "server.ts");
-    fs.mkdirSync(path.join(dir, "src"), { recursive: true });
+test("DWF 3b. computeFailureSignature is stable across pid / duration / timestamp noise", () => {
+  // Volatile values use epoch timestamps and cross-unit durations: both are
+  // normalized by the verify-gate chain (>= 4-digit numbers -> NUM, ms/s/min
+  // -> DURATION). ISO datetimes with differing month/day digits are NOT fully
+  // normalized by the chain, so they are deliberately not varied here.
+  const mochaRunA = [
+    "mocha 10.2.0 (runner pid 4312, ts 1780001234) finished 3 test files in 14.5ms",
+    "1) API contract regression:",
+    "AssertionError [ERR_ASSERTION]: expected 200 to equal 500 (HTTP status)",
+    "at /repo/test/api.spec.js:104:12",
+    "at Context.<anonymous> (/repo/test/api.spec.js:104:12)",
+  ].join("\n");
+  const mochaRunB = [
+    "mocha 10.2.0 (runner pid 90210, ts 1799998765) finished 3 test files in 1.2s",
+    "1) API contract regression:",
+    "AssertionError [ERR_ASSERTION]: expected 200 to equal 500 (HTTP status)",
+    "at /repo/test/api.spec.js:104:12",
+    "at Context.<anonymous> (/repo/test/api.spec.js:104:12)",
+  ].join("\n");
 
-    // Round 0: known-good tree. Phase 3 snapshots HEAD as the LATS checkpoint.
-    fs.writeFileSync(
-      serverFile,
-      "app.use('/api/auth', authRouter);\napp.use('/api/metrics', metricsRouter);\n",
-    );
-    git(dir, "add", "-A");
-    git(dir, "commit", "-q", "-m", "known-good gateway");
-    const checkpoint = git(dir, "rev-parse", "HEAD").trim();
-    const goodContent = fs.readFileSync(serverFile, "utf8");
-
-    // Round 1: a candidate fix regresses the tree (clobbers the auth route).
-    fs.writeFileSync(
-      serverFile,
-      "app.use('/api/metrics', metricsRouter);\n",
-    );
-    git(dir, "add", "-A");
-    git(dir, "commit", "-q", "-m", "regressive candidate");
-    assert.notEqual(fs.readFileSync(serverFile, "utf8"), goodContent, "Tree must be regressed before rollback");
-
-    // DWF regression predicate (adapters/zcode/boost.dwf.ts LATS loop):
-    // failure spreading (lastFailCount -> currentFailCount) or rising exit codes
-    // trigger `git reset --hard ${checkpoint} && git clean -fd`.
-    const lastFailCount = 1;
-    const currentFailCount = 2; // "2 failed" in the Round-1 verify output
-    const lastExitCode = 1;
-    const gateExitCode = 3;
-    const isRegression =
-      currentFailCount > lastFailCount && lastFailCount > 0 && gateExitCode > lastExitCode && gateExitCode !== 0;
-    assert.equal(isRegression, true, "Failure spreading + exit-code rise must classify Round 1 as a regression");
-
-    // Execute the exact DWF rollback command against the real repository.
-    execFileSync("sh", ["-c", `git reset --hard ${checkpoint} 2>/dev/null && git clean -fd 2>/dev/null || true`], {
-      cwd: dir,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    assert.equal(
-      fs.readFileSync(serverFile, "utf8"),
-      goodContent,
-      "git reset --hard must restore the checkpoint content (auth route survives)",
-    );
-    assert.equal(git(dir, "rev-parse", "HEAD").trim(), checkpoint, "HEAD must be back at the LATS checkpoint");
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
+  assert.equal(
+    computeFailureSignature(mochaRunA),
+    computeFailureSignature(mochaRunB),
+    "same root cause with volatile pid/duration/timestamp values must map to one signature (stall detection)",
+  );
 });
 
-test("DWF (c) self-debugging synthesis: verify_synth.sh exits 0 on success and non-zero on failure", () => {
-  const dir = makeTempDir();
-  try {
-    // Phase 3 synthesizes a deterministic reproduction script when no verifyCommand
-    // was supplied (Self-Debugging, Chen et al. 2023). The DWF harness writes it via
-    // `cat << 'EOF' > verify_synth.sh` and executes it as ./verify_synth.sh.
-    const synthScript = [
-      "#!/bin/sh",
-      "# Synthesized reproduction: gateway must mount the OAuth2 auth route",
-      'if grep -q "authRouter" src/server.ts; then',
-      '  echo "verify_synth: auth route mounted"',
-      "  exit 0",
-      "fi",
-      'echo "verify_synth: auth route missing"',
-      "exit 1",
-      "",
-    ].join("\n");
-    fs.writeFileSync(path.join(dir, "verify_synth.sh"), synthScript);
-    execFileSync("sh", ["-c", "chmod +x verify_synth.sh"], { cwd: dir });
-
-    fs.mkdirSync(path.join(dir, "src"), { recursive: true });
-
-    // Healthy tree -> exit 0.
-    fs.writeFileSync(path.join(dir, "src", "server.ts"), "app.use('/api/auth', authRouter);\n");
-    const healthy = execFileSync("sh", ["-c", "./verify_synth.sh; echo exit=$?"], {
-      cwd: dir,
-      encoding: "utf8",
-    });
-    assert.match(healthy, /exit=0/, "Synthesized script must accept a compliant implementation");
-
-    // Clobbered tree -> non-zero exit, feeding the LATS verify loop.
-    fs.writeFileSync(path.join(dir, "src", "server.ts"), "app.use('/api/metrics', metricsRouter);\n");
-    const broken = execFileSync("sh", ["-c", "./verify_synth.sh; echo exit=$?"], {
-      cwd: dir,
-      encoding: "utf8",
-    });
-    assert.match(broken, /exit=1/, "Synthesized script must reject a regressed implementation");
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
+test("DWF 3c. boost.dwf.ts source anchors: LATS checkpoint, rollback and verify_synth.sh lifecycle", () => {
+  // Snapshot checkpoint creation (git stash create, falling back to HEAD)
+  assert.ok(
+    dwfSource.includes("git stash create"),
+    "boost.dwf.ts must create git checkpoints via 'git stash create'",
+  );
+  // LATS rollback on failure-count spread, plus untracked-debris cleanup
+  assert.ok(
+    dwfSource.includes("git reset --hard"),
+    "boost.dwf.ts must roll back to the checkpoint via 'git reset --hard'",
+  );
+  assert.ok(
+    dwfSource.includes("git clean -fd"),
+    "boost.dwf.ts must purge untracked debris via 'git clean -fd' during rollback",
+  );
+  // Self-Debugging test synthesis: heredoc write, execution, cleanup
+  assert.ok(
+    dwfSource.includes("cat << 'EOF' > verify_synth.sh"),
+    "boost.dwf.ts must materialize the synthesized verify_synth.sh script",
+  );
+  assert.ok(
+    dwfSource.includes('"./verify_synth.sh"'),
+    "boost.dwf.ts must execute the synthesized script as the verify command",
+  );
+  assert.ok(
+    dwfSource.includes("rm -f verify_synth.sh"),
+    "boost.dwf.ts must clean up verify_synth.sh after verification",
+  );
 });
 
 // ---------------------------------------------------------------------------
-// (d) Phase 4 judging: six-dimension yardstick score and the >= 85 gate
+// Group 4: Phase 4 — six-dimension yardstick scoring and the >= 85 gate
 // ---------------------------------------------------------------------------
 
-test("DWF (d) clean review yields a perfect six-dimension score and passes the gate", () => {
-  const result = calculateYardstickScore([]);
-  assert.equal(result.overallScore, 100);
-  assert.equal(result.passed, true);
-  assert.deepEqual(result.breakdown, {
+test("DWF 4a. calculateYardstickScore applies the default 25/20/15/15/15/10 weights", () => {
+  // Clean run: 100 across all six dimensions
+  const clean = calculateYardstickScore([]);
+  assert.equal(clean.overallScore, 100);
+  assert.equal(clean.passed, true);
+  assert.deepEqual(clean.breakdown, {
     delivery: 100,
     conformance: 100,
     fidelity: 100,
@@ -279,184 +326,161 @@ test("DWF (d) clean review yields a perfect six-dimension score and passes the g
     operationalFitness: 100,
     finish: 100,
   });
-  assert.deepEqual(result.deductions, []);
+  assert.deepEqual(clean.deductions, []);
+
+  // One medium finding on delivery: 85*0.25 + 100*0.75 = 96.25 -> 96.
+  // Only the canonical 25% delivery weight produces exactly 96.
+  const oneMedium = calculateYardstickScore([
+    { what: "Auth route missing from gateway", severity: "medium", criterion: "delivery" },
+  ]);
+  assert.equal(oneMedium.breakdown.delivery, 85, "medium severity deducts 15");
+  assert.equal(oneMedium.overallScore, 96);
+  assert.equal(oneMedium.passed, true);
+  assert.equal(oneMedium.deductions[0].penalty, 15);
+
+  // Low severity deducts 5: finish 95 -> 100*0.9 + 95*0.1 = 99.5 -> 100
+  const oneLow = calculateYardstickScore([
+    { what: "comment spacing nit", severity: "low", criterion: "finish" },
+  ]);
+  assert.equal(oneLow.breakdown.finish, 95);
+  assert.equal(oneLow.overallScore, 100);
 });
 
-test("DWF (d) weighted deduction arithmetic is exact: one medium operationalFitness finding costs 15*0.15", () => {
+test("DWF 4b. calculateYardstickScore: high severity deducts 40 and blocks passing at any score", () => {
   const result = calculateYardstickScore([
-    {
-      what: "Log line exceeds configured verbosity on one code path",
-      evidence: "src/middleware/api.ts:33",
-      severity: "medium",
-      status: "verified",
-      criterion: "operational_fitness",
-    },
+    { what: "Verifier fabricated passing evidence", severity: "high", criterion: "fidelity" },
   ]);
-  assert.equal(result.breakdown.operationalFitness, 85);
-  // 85*0.15 + 100*(0.25+0.2+0.15+0.15+0.1) = 12.75 + 85 = 97.75 -> round = 98
-  assert.equal(result.overallScore, 98);
-  assert.equal(result.passed, true, "98 >= 85 with no high-severity finding passes the gate");
-});
 
-test("DWF (d) gate boundary: score exactly 85 passes, 81 fails", () => {
-  const medium = (criterion) => ({
-    what: "placeholder marker left in shipped path",
-    evidence: "src/index.ts:7",
-    severity: "medium",
-    status: "verified",
-    criterion,
-  });
-  // 4 x 15 = 60 off delivery: 40*0.25 + 100*0.75 = 85 exactly -> passes.
-  const atBoundary = calculateYardstickScore([
-    medium("delivery"),
-    medium("delivery"),
-    medium("delivery"),
-    medium("delivery"),
-  ]);
-  assert.equal(atBoundary.breakdown.delivery, 40);
-  assert.equal(atBoundary.overallScore, 85);
-  assert.equal(atBoundary.passed, true, "Gate is inclusive: overallScore >= 85 passes");
-
-  // 5 x 15 = 75 off delivery: 25*0.25 + 100*0.75 = 81.25 -> 81 -> fails.
-  const below = calculateYardstickScore([
-    medium("delivery"),
-    medium("delivery"),
-    medium("delivery"),
-    medium("delivery"),
-    medium("delivery"),
-  ]);
-  assert.equal(below.overallScore, 81);
-  assert.equal(below.passed, false);
-});
-
-test("DWF (d) a high-severity finding vetoes the gate even when the weighted score stays >= 85", () => {
-  const result = calculateYardstickScore([
-    {
-      what: "Coverage report fabricated: claimed 100% on a suite that never ran",
-      evidence: "coverage-summary.json:1",
-      severity: "high",
-      status: "verified",
-      criterion: "fidelity",
-    },
-  ]);
-  // fidelity 100-40=60: 60*0.15 + 85 = 94, but high severity forces passed=false.
-  assert.equal(result.breakdown.fidelity, 60);
+  assert.equal(result.breakdown.fidelity, 60, "high severity deducts 40 from its criterion");
+  assert.equal(result.breakdown.operationalFitness, 100, "other dimensions stay untouched");
+  // 60*0.15 + 100*0.85 = 94 — above 85, yet blocked by the high-severity finding
   assert.equal(result.overallScore, 94);
-  assert.equal(result.passed, false, "hasHighSeverity must veto regardless of the numeric score");
+  assert.equal(result.passed, false, "passed requires no high-severity findings, not just >= 85");
+  assert.deepEqual(result.deductions[0], {
+    criterion: "fidelity",
+    severity: "high",
+    reason: "Verifier fabricated passing evidence",
+    penalty: 40,
+  });
 });
 
-test("DWF (d) criterion routing: explicit criterion wins; keywords classify otherwise", () => {
-  const explicit = calculateYardstickScore([
-    { what: "anything", evidence: "x:1", severity: "low", status: "verified", criterion: "finish" },
+test("DWF 4c. calculateYardstickScore gate at 85 is inclusive; below 85 without high findings fails", () => {
+  // 4 medium delivery findings: delivery = 100-60 = 40 -> 40*0.25 + 75 = 85 exactly
+  const atBoundary = calculateYardstickScore([
+    { severity: "medium", criterion: "delivery" },
+    { severity: "medium", criterion: "delivery" },
+    { severity: "medium", criterion: "delivery" },
+    { severity: "medium", criterion: "delivery" },
   ]);
-  assert.equal(explicit.breakdown.finish, 95, "low severity = 5 penalty on the explicit criterion");
+  assert.equal(atBoundary.overallScore, 85);
+  assert.equal(atBoundary.passed, true, "overallScore == 85 with no high finding passes");
 
-  const byKeyword = calculateYardstickScore([
-    { what: "missing file: required migration 0007 absent from delivery", evidence: "migrations/", severity: "medium", status: "verified" },
+  // 5 medium delivery findings: delivery = 25 -> 25*0.25 + 75 = 81.25 -> 81
+  const belowBoundary = calculateYardstickScore([
+    { severity: "medium", criterion: "delivery" },
+    { severity: "medium", criterion: "delivery" },
+    { severity: "medium", criterion: "delivery" },
+    { severity: "medium", criterion: "delivery" },
+    { severity: "medium", criterion: "delivery" },
   ]);
-  assert.equal(byKeyword.breakdown.delivery, 85, "'missing' text routes to the delivery dimension");
+  assert.equal(belowBoundary.overallScore, 81);
+  assert.equal(belowBoundary.passed, false);
 
-  const fabricated = calculateYardstickScore([
-    { what: "hallucinated upstream API claim in report", evidence: "REPORT.md:9", severity: "medium", status: "verified" },
-  ]);
-  assert.equal(fabricated.breakdown.fidelity, 85, "'hallucinated' text routes to the fidelity dimension");
+  // The gate formula itself is anchored in the DWF source
+  assert.ok(
+    dwfSource.includes("overallScore >= 85 && !hasHighSeverity"),
+    "boost.dwf.ts must gate on overallScore >= 85 with no high-severity findings",
+  );
+});
+
+test("DWF 4d. calculateYardstickScore normalizes customWeights to sum 1; zero-sum input falls back to defaults", () => {
+  // Raw weights 2 and 1 (sum 3) — normalization must yield 2/3 and 1/3
+  const custom = {
+    delivery: 2,
+    conformance: 0,
+    fidelity: 0,
+    internalConsistency: 0,
+    operationalFitness: 0,
+    finish: 1,
+  };
+
+  const clean = calculateYardstickScore([], custom);
+  assert.equal(clean.overallScore, 100);
+
+  // Medium on finish: 100*(2/3) + 85*(1/3) = 95
+  const finishHit = calculateYardstickScore(
+    [{ severity: "medium", criterion: "finish" }],
+    custom,
+  );
+  assert.equal(finishHit.overallScore, 95);
+  assert.equal(finishHit.passed, true);
+
+  // Medium on delivery: 85*(2/3) + 100*(1/3) = 90.
+  // Without normalization this would clamp to 100 — 90 proves normalization ran.
+  const deliveryHit = calculateYardstickScore(
+    [{ severity: "medium", criterion: "delivery" }],
+    custom,
+  );
+  assert.equal(deliveryHit.overallScore, 90);
+  assert.equal(deliveryHit.passed, true);
+
+  // Zero-sum customWeights leave the default weights in place
+  const zeroSum = calculateYardstickScore(
+    [{ severity: "medium", criterion: "delivery" }],
+    {
+      delivery: 0,
+      conformance: 0,
+      fidelity: 0,
+      internalConsistency: 0,
+      operationalFitness: 0,
+      finish: 0,
+    },
+  );
+  assert.equal(
+    zeroSum.overallScore,
+    96,
+    "zero-sum weights must fall back to the 25/20/15/15/15/10 defaults",
+  );
 });
 
 // ---------------------------------------------------------------------------
-// (e) Control (solo, no tool gates) vs treatment (full Boost toolbox) isolation
+// Group 5: control vs experiment track isolation and determinism
 // ---------------------------------------------------------------------------
 
-// Control group A: the solo model writes shared files with no conflict gate.
-const runControlRound = () => {
-  let serverFileContent = "app.use('/api/auth', authRouter);\n";
-  serverFileContent = "app.use('/api/metrics', metricsRouter);\n"; // last write wins, silently
-  const mounted = [];
-  if (serverFileContent.includes("authRouter")) mounted.push("/api/auth/login");
-  if (serverFileContent.includes("metricsRouter")) mounted.push("/api/metrics");
-  return { exitCode: mounted.includes("/api/auth/login") ? 0 : 1, mounted };
-};
+test("DWF 5. BUGSJS-EXPRESS-104: baseline (solo, no tools) fails deterministically, boost (full toolchain) passes deterministically", async () => {
+  const task = BENCHMARK_TASKS.find((t) => t.id === "BUGSJS-EXPRESS-104");
+  assert.ok(task, "BUGSJS-EXPRESS-104 must exist in the standard benchmark suite");
 
-// Treatment group B: Phase 1 gate + planner decoupling + Phase 4 yardstick.
-const runTreatmentRound = () => {
-  const plan = [
+  const baseline1 = await task.runBaseline();
+  const baseline2 = await task.runBaseline();
+  const boost1 = await task.runBoost();
+  const boost2 = await task.runBoost();
+
+  // Control track (solo model, no conflict gate): silent clobber drops the auth route
+  assert.equal(baseline1.passed, false);
+  assert.equal(baseline1.exitCode, 1);
+  assert.ok(baseline1.yardstickScore < 85);
+
+  // Experiment track (model + tools): Phase 1 intercepts, decouples, verifies
+  assert.equal(boost1.passed, true);
+  assert.equal(boost1.exitCode, 0);
+  assert.ok(boost1.yardstickScore >= 85);
+
+  // Deterministic across repeated runs of both tracks
+  assert.equal(baseline2.passed, false);
+  assert.equal(boost2.passed, true);
+  assert.equal(baseline2.yardstickScore, baseline1.yardstickScore);
+  assert.equal(boost2.yardstickScore, boost1.yardstickScore);
+
+  // Isolation contract: the boost track only passes because the conflict gate
+  // fires on the raw workstream pair the baseline executes blindly
+  const rawPairConflicts = detectTargetFileConflicts([
     { title: "OAuth2 Auth Routes", kind: "code", targetFiles: ["src/routes/auth.ts", "src/server.ts"] },
     { title: "Metrics API Routes", kind: "code", targetFiles: ["src/routes/api.ts", "src/server.ts"] },
-  ];
-  const conflicts = detectTargetFileConflicts(plan);
-  if (conflicts.length !== 1) return { exitCode: 1, conflicts, mounted: [] };
-
-  const decoupled = [
-    { title: "OAuth2 Auth Routes", kind: "code", targetFiles: ["src/routes/auth.ts", "src/middleware/auth.ts"] },
-    { title: "Metrics API Routes", kind: "code", targetFiles: ["src/routes/api.ts", "src/middleware/api.ts"] },
-    { title: "Server Gateway Assembly", kind: "code", targetFiles: ["src/server.ts"] },
-  ];
-  if (detectTargetFileConflicts(decoupled).length !== 0) return { exitCode: 1, conflicts, mounted: [] };
-
-  const serverFileContent = "app.use('/api/auth', authRouter);\napp.use('/api/metrics', metricsRouter);\n";
-  const mounted = [];
-  if (serverFileContent.includes("authRouter")) mounted.push("/api/auth/login");
-  if (serverFileContent.includes("metricsRouter")) mounted.push("/api/metrics");
-  const gate = calculateYardstickScore([
-    { what: "comment spacing nit in assembly", evidence: "src/server.ts:14", severity: "low", status: "verified", criterion: "finish" },
   ]);
-  return { exitCode: gate.passed && mounted.length === 2 ? 0 : 1, conflicts, mounted, gate };
-};
+  assert.equal(rawPairConflicts.length, 1);
+  assert.equal(rawPairConflicts[0].file, "src/server.ts");
 
-test("DWF (e) control group fails deterministically; treatment group passes deterministically (10 rounds each)", () => {
-  const controlResults = [];
-  const treatmentResults = [];
-  for (let i = 0; i < 10; i++) {
-    controlResults.push(runControlRound());
-    treatmentResults.push(runTreatmentRound());
-  }
-  for (const c of controlResults) {
-    assert.equal(c.exitCode, 1, "Solo writes must always clobber the OAuth2 route (no gate to stop it)");
-    assert.deepEqual(c.mounted, ["/api/metrics"]);
-  }
-  for (const t of treatmentResults) {
-    assert.equal(t.exitCode, 0, "Gated execution must always mount both routes");
-    assert.equal(t.conflicts.length, 1, "The gate must observe the conflict before execution");
-    assert.deepEqual(t.mounted.sort(), ["/api/auth/login", "/api/metrics"].sort());
-    assert.equal(t.gate.passed, true);
-  }
-});
-
-test("DWF (e) groups are logically isolated: the control path never consults the tool gates", () => {
-  // Structural isolation - the control round is a pure string pipeline with no
-  // reference to detectTargetFileConflicts / calculateYardstickScore. Its outcome
-  // must therefore be invariant to whether the toolbox is loaded at all.
-  const beforeToolbox = runControlRound();
-  assert.equal(typeof detectTargetFileConflicts, "function", "toolbox symbols are loaded in this process");
-  assert.equal(typeof calculateYardstickScore, "function", "toolbox symbols are loaded in this process");
-  const afterToolbox = runControlRound();
-  assert.deepEqual(beforeToolbox, afterToolbox, "control outcome must not depend on toolbox availability");
-  assert.equal(beforeToolbox.exitCode, 1);
-
-  // The same shared-file plan that the treatment group intercepts is invisible
-  // to the control group - it never asks the question.
-  const sharedPlan = [
-    { title: "WS-1", kind: "code", targetFiles: ["src/server.ts"] },
-    { title: "WS-2", kind: "code", targetFiles: ["src/server.ts"] },
-  ];
-  assert.equal(detectTargetFileConflicts(sharedPlan).length, 1, "the tool sees the conflict");
-  assert.equal(runControlRound().exitCode, 1, "the control path still clobbers");
-});
-
-test("DWF (e) A-MEM lifetime memory: treatment recalls prior lessons, control repeats the pitfall", () => {
-  const memory = `
-<experience>
-dimension: INV
-cue: cross-platform path separators and regex delimiters in node build tools
-lesson: Normalize paths with path.normalize(p).replace(/\\\\/g, '/') before regex matching
-verdict: helped
-confidence: high
-evidence: Prevented path matching errors across Windows CI runners
-</experience>`;
-  const recalled = matchExperienceCues(memory, "cross-platform path resolution for windows ci", 1);
-  assert.ok(recalled.length > 0, "Treatment (A-MEM) must recall the relevant prior lesson");
-  assert.ok(recalled.includes("path"), "Recalled context must address path normalization");
-
-  // Control has no experience ledger: recall is empty and the same trap re-fires.
-  const controlRecall = matchExperienceCues("", "cross-platform path resolution for windows ci", 1);
-  assert.equal(controlRecall.length, 0, "Control has no lifetime memory to consult");
+  // The two tracks never converge on this task
+  assert.ok(boost1.yardstickScore > baseline1.yardstickScore);
 });

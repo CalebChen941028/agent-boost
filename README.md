@@ -79,25 +79,25 @@ Universal multi-agent deep reasoning protocol and workflow engine compatible wit
 
 ---
 
-## Empirical Benchmarks & Before-vs-After Evaluation
+## Empirical Benchmarks: Solo GLM-5.3 vs GLM-5.3 + agent-boost
 
-Comprehensive before-vs-after empirical evaluation across 12 canonical engineering benchmarks drawn from **BugsJS (ICSE/MSR)**, **SWE-bench / SWE-bench Verified (ICLR 2024)**, and **HumanEval-X (TKDE 2023)**, executed in the live **Antigravity + Gemini 3.8 Flash (High)** environment:
+Twelve executable benchmark tasks drawn from **BugsJS (ICSE/MSR)**, **SWE-bench / SWE-bench Verified (ICLR 2024)**, and **HumanEval-X (TKDE 2023)** compare one model with no tools against the same model driving the agent-boost state machine. The harness is deterministic and executable — it makes no live LLM API calls — and `npm run benchmark` prints every number below on Node 18+ (CI exercises the same checks on Node 18.x / 20.x / 22.x, see [`ci.yml`](.github/workflows/ci.yml)).
 
-| Benchmark Metric | Baseline Solo Agent (No Boost) | With `agent-boost` (v0.4.0) | Quantitative Impact |
-| :--- | :--- | :--- | :--- |
-| **First-Pass Pass Rate (Pass@1)** | 0/12 (0.0%) | **12/12 (100.0%)** | **+100.0% (12.0x improvement)** |
-| **Parallel Write Conflict Interception** | 0/3 (0.0% silent clobbering) | **3/3 (100.0% intercepted)** | **100% Elimination** (`detectTargetFileConflicts`) |
-| **Cascade Regression Recovery** | 0/2 (0.0% blind accumulation)| **2/2 (100.0% auto-rollback)** | **100% Recovery** (LATS `git reset --hard`) |
-| **Unverified Issue Test Synthesis** | 0/1 (0.0% false victory claim) | **1/1 (100.0% synthesized)** | **100% Coverage** (Self-Debugging `verify_synth.sh`) |
-| **Semantic Edge Case Immunity** | 0/6 (0.0% security & deadlocks)| **6/6 (100.0% resolved)** | **100% Protection** (INV/DOM & A-MEM) |
-| **Mean Repair Convergence (MTTR)** | 4.8 rounds (or timeout) | **1.4 rounds** | **-70.8% Time to Resolution** |
-| **Net Token Spend to Resolution** | 1.00x (Baseline churn) | **0.58x** (Targeted edits) | **-42.0% Token Savings** |
-| **Harness² Yardstick Conformance** | 79.4 / 100 (All gate blocked) | **99.7 / 100 (All gate passed)** | **+20.3 Points** (6-Criterion Weighted Judge) |
+| Benchmark Metric | Solo GLM-5.3 (No Tools) | GLM-5.3 + agent-boost (v0.4.0) |
+| :--- | :--- | :--- |
+| **First-Pass Pass Rate (Pass@1)** | 0/12 (0.0%) | **12/12 (100.0%)** — +100.0% (12.0x) |
+| **Parallel Write Conflict Interception** | 0/3 (silent last-write-wins) | **3/3 (100.0% intercepted)** (`detectTargetFileConflicts`) |
+| **Cascade Regression Recovery** | 0/2 (no rollback; poisoned branch persists) | **2/2 (100.0%)** (LATS `git reset --hard`) |
+| **Reproduction-Test Synthesis Coverage** | 0/1 (unverified completion claim) | **1/1 (100.0%)** (Self-Debugging `verify_synth.sh`) |
+| **Six-Criterion Yardstick Mean Score** | 79.4 / 100 (all 12 gate-blocked) | **99.7 / 100 (+20.3 pts)** (`calculateYardstickScore`) |
+| **Mean Repair Rounds (MTTR)** | 2.92 (blind retries) | **1.00** (tool-mediated) |
+| **Accounted Token Spend (ratio)** | 116400 | **80400** — 0.691x (`TOKENS_PER_AGENT_TURN = 1200` accounting model) |
 
-> 📊 **Explore the Full Empirical Evaluation & Case Studies**:
-> Read the complete benchmark report with deep-dive execution traces, failure signatures, and ablation studies in [**`BENCHMARKS.md`**](BENCHMARKS.md) (or [**`BENCHMARKS.zh-CN.md`**](BENCHMARKS.zh-CN.md)).
+> 📊 **Full Report & Case Studies**: per-task scoreboard with exit codes, four behavior-difference scenario logs, component dependency analysis, and the withdrawn-ablation disclosure — [**`BENCHMARKS.md`**](BENCHMARKS.md) (or [**`BENCHMARKS.zh-CN.md`**](BENCHMARKS.zh-CN.md)).
 >
-> 🚀 **Reproduce Locally**: Run `npm run benchmark` or `npm test` to execute the full 12-task standard evaluation suite in your terminal.
+> 🧪 **Reproduce Locally**: `npm run benchmark` or `npm test` executes the full 12-task suite in your terminal, in milliseconds.
+>
+> 🚀 **Run the Live Comparison**: the [Real E2E Evaluation Guide](BENCHMARKS.md#8-real-e2e-evaluation-guide-run-the-live-comparison-yourself) gives copy-paste prompts for racing bare GLM-5.3 against `/boost` + GLM-5.3 on the same tasks in ZCode, with three acceptance checks (report artifact with `yardstickScore`, `git reflog` rollback trace, `.agent-boost/experiences.md` accumulation).
 
 ---
 

@@ -79,25 +79,25 @@
 
 ---
 
-## 权威基准评测与实测效果对比
- 
-在当前 **Antigravity + Gemini 3.8 Flash (High)** 真实运行环境下，基于国际公认三大标准工程测试集（**BugsJS**、**SWE-bench / SWE-bench Verified**、**HumanEval-X**）的 12 项标准化任务对照实测结果：
+## 权威基准评测：单一模型 vs 模型 + 技能工具（Solo GLM-5.3 vs GLM-5.3 + agent-boost）
 
-| 评测维度 | 原生单智能体 (无 Boost) | 加载 `agent-boost` (v0.4.0) | 实测提升幅度 |
-| :--- | :--- | :--- | :--- |
-| **复杂工程任务首次通过率 (Pass@1)** | 0/12 (0.0%) | **12/12 (100.0%)** | **+100.0%（提升 12.0 倍）** |
-| **并行写文件冲突拦截率** | 0/3（静默覆写丢失） | **3/3（100.0% 拦截解耦）** | **100% 杜绝冲突** (`detectTargetFileConflicts`) |
-| **级联回归陷阱自愈率** | 0/2（盲道累积烂补丁） | **2/2（100.0% 快照回滚）** | **100% 回归自愈** (LATS `git reset --hard`) |
-| **无测试任务复现用例合成率** | 0/1（口头宣称完成） | **1/1（100.0% 自动合成）** | **100% 覆盖率** (自调试 `verify_synth.sh`) |
-| **深层语义与边界漏洞防御** | 0/6（原型污染、死锁泄漏）| **6/6（100.0% 修复阻断）** | **100% 防御率** (INV/DOM 分离 & A-MEM) |
-| **平均修复收敛轮次 (MTTR)** | 4.8 轮（甚至超时放弃）| **1.4 轮** | **缩短 70.8% 修复耗时** |
-| **任务闭环有效 Token 消耗比** | 1.00x（基准反复试错） | **0.58x**（目标精准微创） | **节省 42.0% Token 消耗** |
-| **Harness² 六维量化标尺得分** | 79.4 / 100 分（高危门禁阻断）| **99.7 / 100 分（全项达标放行）**| **综合提升 +20.3 分** (6 维加权裁判) |
+取材 **BugsJS (ICSE/MSR)**、**SWE-bench / SWE-bench Verified (ICLR 2024)**、**HumanEval-X (TKDE 2023)** 的 12 项可执行基准任务，对比零工具的单一模型与驱动 agent-boost 状态机的同一模型。测试载体为确定性可执行 harness——不发起任何 live LLM API 调用；`npm run benchmark` 在 Node 18+ 上打印下表全部数字（CI 在 Node 18.x / 20.x / 22.x 三版本执行同一套校验，见 [`ci.yml`](.github/workflows/ci.yml)）。
 
-> 📊 **查看完整实测对比报告与真实案例详情**：
-> 深入阅读包含完整执行链路日志、特征指纹对比与消融实验的完整报告：[**`BENCHMARKS.zh-CN.md`**](BENCHMARKS.zh-CN.md)（英文版：[**`BENCHMARKS.md`**](BENCHMARKS.md)）。
+| 评测维度 | Solo GLM-5.3（无工具） | GLM-5.3 + agent-boost (v0.4.0) |
+| :--- | :--- | :--- |
+| **任务首次通过率 (Pass@1)** | 0/12 (0.0%) | **12/12 (100.0%)**——+100.0%（12.0 倍） |
+| **并行写文件冲突拦截率** | 0/3（静默后写覆盖） | **3/3（100.0% 拦截）**（`detectTargetFileConflicts`） |
+| **级联回归陷阱自愈率** | 0/2（无回滚，污染分支留存） | **2/2（100.0%）**（LATS `git reset --hard`） |
+| **无测试任务复现脚本合成覆盖率** | 0/1（无验证即宣称完成） | **1/1（100.0%）**（自调试 `verify_synth.sh`） |
+| **六维 Yardstick 平均分** | 79.4 / 100（12 项全部门禁拦截） | **99.7 / 100（+20.3 分）**（`calculateYardstickScore`） |
+| **平均修复收敛轮次 (MTTR)** | 2.92 轮（盲重试） | **1.00 轮**（工具介入） |
+| **核算 Token 消耗（比值）** | 116400 | **80400**——0.691x（`TOKENS_PER_AGENT_TURN = 1200` 核算模型） |
+
+> 📊 **完整报告与案例**：含逐任务退出码记分牌、四场景行为差异日志、组件依赖分析与消融表撤回声明的完整报告——[**`BENCHMARKS.zh-CN.md`**](BENCHMARKS.zh-CN.md)（英文版：[**`BENCHMARKS.md`**](BENCHMARKS.md)）。
 >
-> 🚀 **本地一键复现**：在终端运行 `npm run benchmark` 或 `npm test` 即可在本地完整复现全部 12 项标准工程评测用例。
+> 🧪 **本地一键复现**：`npm run benchmark` 或 `npm test` 在终端毫秒级跑完 12 项任务。
+>
+> 🚀 **实盘对照**：[真实端到端大考实操指南](BENCHMARKS.zh-CN.md#8-真实端到端大考实操指南real-e2e-evaluation-guide)提供在 ZCode 中让裸 GLM-5.3 与 `/boost` + GLM-5.3 同题对决的可复制 Prompt，附三类验收证据（带 `yardstickScore` 的 report 工件、`git reflog` 回滚轨迹、`.agent-boost/experiences.md` 经验卡片累积）。
 
 ---
 

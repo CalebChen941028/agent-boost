@@ -579,14 +579,30 @@ export function generateMarkdownSummary(summary) {
 // CLI
 // ---------------------------------------------------------------------------
 
+// Newest live-run JSON in live-results/ (mtime order), so a bare
+// `npm run benchmark:report` never regenerates from a stale run.
+function latestRunJson() {
+  const dir = path.join(REPO_ROOT, "live-results");
+  if (!fs.existsSync(dir)) return null;
+  const candidates = fs
+    .readdirSync(dir)
+    .filter((f) => /^live-run-.*\.json$/.test(f))
+    .map((f) => ({ f, m: fs.statSync(path.join(dir, f)).mtimeMs }))
+    .sort((a, b) => b.m - a.m);
+  return candidates.length > 0 ? path.join(dir, candidates[0].f) : null;
+}
+
 function main() {
-  const inputArg = process.argv[2] || path.join(REPO_ROOT, "live-results", "live-run-final.json");
+  const inputArg = process.argv[2] || latestRunJson();
   const outputArg = process.argv[3] || path.join(REPO_ROOT, "live-results", "report.html");
 
-  if (!fs.existsSync(inputArg)) {
-    console.error(`Input file not found: ${inputArg}`);
+  if (!inputArg || !fs.existsSync(inputArg)) {
+    console.error(`Input file not found: ${inputArg || "(no live-run JSON in live-results/)"}`);
     console.error("Usage: node scripts/generate-benchmark-report.mjs [input.json] [output.html]");
     process.exit(1);
+  }
+  if (!process.argv[2]) {
+    console.log(`Using latest run JSON: ${inputArg}`);
   }
 
   const raw = fs.readFileSync(inputArg, "utf8");

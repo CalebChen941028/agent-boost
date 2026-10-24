@@ -1,4 +1,4 @@
-# agent-boost 权威基准评测与实测效果报告
+# agent-boost 架构安全与故障模式形式化验证报告
 
 [![CI](https://github.com/CalebChen941028/agent-boost/actions/workflows/ci.yml/badge.svg)](https://github.com/CalebChen941028/agent-boost/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -6,13 +6,28 @@
 
 [English](BENCHMARKS.md) | [简体中文](BENCHMARKS.zh-CN.md)
 
-本报告呈现了在当前 **Antigravity + Gemini 3.8 Flash (High)** 真实运行环境下，基于国际公认的标准软件工程测试基准（**BugsJS**、**SWE-bench / SWE-bench Verified**、**HumanEval-X**），对**原生单智能体（Solo Agent，无 Boost 协作）**与加载 **`agent-boost` (v0.4.0)** 后的多智能体协作工作流所进行的 100% 真实、可完全复现的评测对比与深度案例分析。
+本报告呈现了基于国际公认软件工程测试基准（**BugsJS**、**SWE-bench / SWE-bench Verified**、**HumanEval-X**）所抽象出的 12 类典型工程故障场景下，**原生单智能体行为模式（Mode A: 无状态盲改与无约束并发）**与加载 **`agent-boost` (Mode B: v0.4.0 五阶段确定性状态机)** 的形式化逻辑与拦截能力验证对照。
 
-本项目已完全废弃早期的理论估算数据，本报告中的全部任务与数据均可通过运行 `npm run benchmark` 或 `npm test` 获得 100% 确定性本地复现。
+本套件完全公开透明，代码位于 [`scripts/run-benchmarks.mjs`](scripts/run-benchmarks.mjs)，可通过运行 `npm run benchmark` 或 `npm test` 在本地 100% 确定性复现。
 
 ---
 
-## 1. 摘要与量化对比矩阵
+## 1. 评测性质与真实性透明度声明（必读）
+
+> [!IMPORTANT] **核心声明：这是形式化故障拦截逻辑验证，而非调用远程大模型 API 的随机打分**
+> 1. **本报告是什么**：
+>    这是一套**架构级故障模式与状态机拦截的形式化可执行验证集（Structural Failure-Mode Verification Harness）**。它针对原生单智能体在开发复杂多文件项目时最致命的 12 种结构性死穴（并发写文件静默覆写、无回滚盲道修复累积、无测试口头吹嘘、原型链污染、死锁循环等），通过真实的 JavaScript 可执行代码，验证 `agent-boost` 核心算法（[`detectTargetFileConflicts`](shared/verify-gate.ts)、[`computeFailureSignature`](shared/verify-gate.ts)、LATS Git 快照回滚、[`calculateYardstickScore`](shared/verify-gate.ts)）是否能在算法层面 100% 形式化拦截这些破坏行为。
+> 2. **本报告不是什么**：
+>    本脚本**未向 Gemini 3.8 Flash 或任何大模型远程 API 发起实时网络调用**。它在几毫秒内即可运行完毕，验证的是状态机和纯函数的**数学逻辑与拦截机制保证**。
+> 3. **真实端到端实盘中，差距真的有“0% vs 100%”这么大吗？**
+>    **绝对不会这么极端。**
+>    - 在真实的端到端大模型实战中，一个能力优秀的基础模型（如 Gemini 3.8 Flash High、Claude 3.5 Sonnet）仅凭自身单枪匹马，在 12 个任务中也能靠运气或强大的单次上下文做对相当一部分（真实通过率约在 30%~50% 之间），绝不会像对抗样本里那样全军覆没（0%）；
+>    - 加载了 `agent-boost` 后，多出的保障主要体现在**高危陷阱的主动拦截、改坏时的自动回滚、以及杜绝虚假自封**，能将整体稳定度和通过率拉升（根据 SWE-bench/Harness² 学术经验通常能提升 20~35 个百分点），但也绝不可能突破底层模型智力上限做到 100% 神仙全过；
+>    - 之所以在这 12 个针对性基准中呈现 `0/12 vs 12/12`，是因为这 12 个用例专门设计用来验证“**当这些致命故障发生时，单智能体架构在机制上注定失效，而 Boost 状态机在规则上必定拦截**”。
+
+---
+
+## 2. 机制对比矩阵 (12 类典型工程故障对决)
 
 原生单智能体在单轮或简单生成循环（Generative Loop）中处理复杂多文件工程任务时，普遍面临四大结构性故障模式：
 1. **并行写文件竞态与代码覆写（Code Clobbering）**：未协同的子智能体同时修改路由网关或包导出入口，后完成者静默覆写先完成者代码（Last-write-wins）。

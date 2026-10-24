@@ -6,3 +6,5 @@ models.local.json
 .agent-boost/
 *.bak-*
 *.log
+.serena/
+.video_agent/

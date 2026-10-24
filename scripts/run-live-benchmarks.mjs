@@ -1163,6 +1163,7 @@ async function runBoostArm(task, ws, experienceStore, log, fixtureTests, baselin
     fixtureSha,
     records,
     complexity: plan.complexity,
+    tokenBudget: maxTokens, // adaptive tier budget (Option B) applied to exec/repair calls
     workstreams: plan.workstreams,
     events,
     finalRun,
@@ -2309,6 +2310,7 @@ async function runTaskDuel(task, runRoot, experienceStore, log) {
       failingTests: boostGround.parsed.failingNames,
       workstreams: boost.workstreams,
       complexityTier: boost.complexity.complexity,
+      tokenBudget: boost.tokenBudget, // adaptive max_tokens for exec/repair calls (Option B)
       maxRepairRounds: boost.complexity.maxRepairRounds,
       repairRounds: boost.events.repairRounds,
       conflictsIntercepted: boost.events.conflictsIntercepted,

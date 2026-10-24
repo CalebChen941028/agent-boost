@@ -2203,6 +2203,298 @@ export const LIVE_TASKS = [
       });
     },
   },
+  {
+    id: "LIVE-BLIND-FAULT-LOCALIZATION",
+    name: "Multi-Module Microservice Pipeline Blind Fault Localization",
+    origin: "SWE-bench Verified / Microservice Pipeline Fault Localization (live)",
+    category: "Blind Fault Localization",
+    scenario: "blind-localization",
+    experienceKeywords: "blind fault localization stack trace pricing discount coupon NaN microservice pipeline",
+    experienceDimension: "DOM",
+    sourceFiles: [
+      "src/controllers/checkout.controller.js",
+      "src/services/pricing.service.js",
+      "src/services/discount.service.js",
+      "src/utils/currency.util.js",
+    ],
+    testFiles: ["test/checkout.test.mjs"],
+    fixtureHasTests: true,
+    expectedBaselineFails: 0,
+    soloSeesTests: true,
+    brief:
+      "A high-priority bug was reported in the checkout service: VIP customers with percentage discounts receive NaN or an unrounded total when checking out with coupon codes.\n\n" +
+      "Error Log / Stack Trace from Integration Run:\n" +
+      "  AssertionError: expected '80.00' but received 'NaN'\n" +
+      "    at TestContext.<anonymous> (test/checkout.test.mjs:42:12)\n\n" +
+      "Architecture Overview:\n" +
+      "The checkout flow routes requests through src/controllers/checkout.controller.js, which queries src/services/discount.service.js for applicable vouchers and delegates final bill calculation to src/services/pricing.service.js with helpers in src/utils/currency.util.js.\n\n" +
+      "Task:\n" +
+      "Inspect the microservice repository files, locate the root cause file among the candidate modules, and resolve the NaN / discount calculation defect.\n" +
+      "Do NOT modify the test suite or any unrelated module contracts. Existing non-discount checkout operations must keep passing without regression.",
+    fixture(ws) {
+      writeWorkspaceFiles(ws, {
+        "package.json": PKG_JSON,
+        "src/utils/currency.util.js":
+          "export function formatCurrency(amount) {\n" +
+          "  return Number(amount).toFixed(2);\n" +
+          "}\n\n" +
+          "export function roundToCents(amount) {\n" +
+          "  return Math.round(Number(amount) * 100) / 100;\n" +
+          "}\n",
+        "src/services/discount.service.js":
+          "export function resolveCoupon(code) {\n" +
+          "  const coupons = {\n" +
+          "    VIP20: { type: 'percent', value: 20 },\n" +
+          "    FLAT10: { type: 'flat', value: 10 },\n" +
+          "  };\n" +
+          "  return coupons[code] || null;\n" +
+          "}\n",
+        "src/services/pricing.service.js":
+          "import { formatCurrency, roundToCents } from '../utils/currency.util.js';\n\n" +
+          "export function calculateOrderTotal(items = [], coupon = null) {\n" +
+          "  const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);\n" +
+          "  let discountAmount = 0;\n" +
+          "  if (coupon) {\n" +
+          "    if (coupon.type === 'percent') {\n" +
+          "      // BUG: coupon.rate is undefined (discount.service returns value: 20)\n" +
+          "      discountAmount = subtotal * coupon.rate;\n" +
+          "    } else if (coupon.type === 'flat') {\n" +
+          "      discountAmount = Math.min(subtotal, coupon.value);\n" +
+          "    }\n" +
+          "  }\n" +
+          "  const total = Math.max(0, subtotal - discountAmount);\n" +
+          "  return {\n" +
+          "    subtotal: formatCurrency(subtotal),\n" +
+          "    discount: formatCurrency(discountAmount || 0),\n" +
+          "    total: formatCurrency(roundToCents(total)),\n" +
+          "  };\n" +
+          "}\n",
+        "src/controllers/checkout.controller.js":
+          "import { resolveCoupon } from '../services/discount.service.js';\n" +
+          "import { calculateOrderTotal } from '../services/pricing.service.js';\n\n" +
+          "export function processCheckout({ items = [], couponCode = null }) {\n" +
+          "  if (!Array.isArray(items) || items.length === 0) {\n" +
+          "    throw new Error('Cart is empty');\n" +
+          "  }\n" +
+          "  const coupon = couponCode ? resolveCoupon(couponCode) : null;\n" +
+          "  return calculateOrderTotal(items, coupon);\n" +
+          "}\n",
+        "test/checkout.test.mjs":
+          'import test from "node:test";\n' +
+          'import assert from "node:assert/strict";\n' +
+          'import { processCheckout } from "../src/controllers/checkout.controller.js";\n\n' +
+          'test("standard checkout calculates subtotal and total without discount", () => {\n' +
+          '  const res = processCheckout({\n' +
+          '    items: [\n' +
+          '      { name: "Widget", price: 25.5, quantity: 2 },\n' +
+          '      { name: "Gadget", price: 10.0, quantity: 1 },\n' +
+          '    ],\n' +
+          '  });\n' +
+          '  assert.equal(res.subtotal, "61.00");\n' +
+          '  assert.equal(res.discount, "0.00");\n' +
+          '  assert.equal(res.total, "61.00");\n' +
+          '});\n\n' +
+          'test("flat coupon checkout deducts fixed value correctly", () => {\n' +
+          '  const res = processCheckout({\n' +
+          '    items: [{ name: "Widget", price: 50.0, quantity: 1 }],\n' +
+          '    couponCode: "FLAT10",\n' +
+          '  });\n' +
+          '  assert.equal(res.subtotal, "50.00");\n' +
+          '  assert.equal(res.discount, "10.00");\n' +
+          '  assert.equal(res.total, "40.00");\n' +
+          '});\n\n' +
+          'test("VIP percentage coupon calculates discount and final total without NaN", () => {\n' +
+          '  const res = processCheckout({\n' +
+          '    items: [{ name: "Widget", price: 100.0, quantity: 1 }],\n' +
+          '    couponCode: "VIP20",\n' +
+          '  });\n' +
+          '  assert.equal(res.subtotal, "100.00");\n' +
+          '  assert.equal(res.discount, "20.00");\n' +
+          '  assert.equal(res.total, "80.00");\n' +
+          '  assert.equal(res.total !== "NaN", true);\n' +
+          '});\n',
+      });
+    },
+  },
+  {
+    id: "LIVE-HARNESS-INV-DUAL-PACKAGE",
+    name: "Dual ESM/CJS Package Exports Subpath Invariant Break",
+    origin: "Google Research Harness² / Invariant-First Packaging (live)",
+    category: "Invariant-First Environment (INV)",
+    scenario: "inv-environment",
+    experienceKeywords: "invariant preflight package exports subpath ERR_PACKAGE_PATH_NOT_EXPORTED dual package",
+    experienceDimension: "INV",
+    sourceFiles: ["package.json", "src/index.js", "src/strings.js"],
+    testFiles: ["test/exports.test.mjs"],
+    fixtureHasTests: true,
+    expectedBaselineFails: 0,
+    soloSeesTests: true,
+    brief:
+      "Subpath export resolution fails on Node.js ESM loader: importing subpath 'agent-lib/strings' throws ERR_PACKAGE_PATH_NOT_EXPORTED.\n\n" +
+      "Error Diagnostics:\n" +
+      "  Error [ERR_PACKAGE_PATH_NOT_EXPORTED]: Package subpath './strings' is not defined by 'exports' in package.json\n\n" +
+      "Architecture Context (Harness² INV-First Principle):\n" +
+      "This is an Invariant / Packaging mechanics defect (INV dimension). The business logic in src/strings.js and src/index.js is already 100% correct.\n" +
+      "The package is designed as a modern Node ESM package supporting root export and subpath export './strings'.\n\n" +
+      "Requirements:\n" +
+      "  - Configure package.json \"exports\" map so that:\n" +
+      "      - Root import '.' maps to './src/index.js'\n" +
+      "      - Subpath import './strings' maps to './src/strings.js'\n" +
+      "  - Root package and subpath imports must resolve cleanly.\n" +
+      "  - Do not break existing package.json scripts or dependencies.",
+    fixture(ws) {
+      writeWorkspaceFiles(ws, {
+        "package.json": JSON.stringify(
+          {
+            name: "agent-lib",
+            version: "1.0.0",
+            type: "module",
+            exports: {
+              ".": "./src/index.js",
+            },
+            scripts: { test: "node --test" },
+          },
+          null,
+          2,
+        ),
+        "src/strings.js":
+          "export function slugify(str) {\n" +
+          '  return String(str || "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");\n' +
+          "}\n",
+        "src/index.js":
+          'export { slugify } from "./strings.js";\n' +
+          'export const VERSION = "1.0.0";\n',
+        "test/exports.test.mjs":
+          'import test from "node:test";\n' +
+          'import assert from "node:assert/strict";\n' +
+          'import { slugify, VERSION } from "../src/index.js";\n\n' +
+          'test("root module exports resolve and functions work", () => {\n' +
+          '  assert.equal(VERSION, "1.0.0");\n' +
+          '  assert.equal(slugify("Hello World!"), "hello-world");\n' +
+          '});\n\n' +
+          'test("subpath package import agent-lib/strings resolves cleanly via package.json exports", async () => {\n' +
+          '  const sub = await import("agent-lib/strings");\n' +
+          '  assert.equal(typeof sub.slugify, "function");\n' +
+          '  assert.equal(sub.slugify("Harness Invariant Preflight"), "harness-invariant-preflight");\n' +
+          '});\n',
+      });
+    },
+  },
+  {
+    id: "LIVE-LONG-HORIZON-RESOURCE-LEAK",
+    name: "High-Concurrency Event Stream Pipeline Debounce Timer & Listener Leak",
+    origin: "Reactive Stream / EventEmitter resource leak archetype (live)",
+    category: "Long-Horizon Concurrency Leak",
+    scenario: "resource-leak",
+    experienceKeywords: "resource leak event listener timer debounce soak test cleanup destroy pipeline",
+    experienceDimension: "DOM",
+    sourceFiles: ["src/pipeline.js"],
+    testFiles: ["test/pipeline.test.mjs"],
+    fixtureHasTests: true,
+    expectedBaselineFails: 0,
+    soloSeesTests: true,
+    brief:
+      "Fix a resource leak in src/pipeline.js: StreamPipeline buffers high-frequency streaming events with a debounce timer and emits batches.\n\n" +
+      "Bug & Soak Test Failure:\n" +
+      "In long-running microservices, pipelines are dynamically created and destroyed per connection. Under soak testing with 50 connection lifecycles, active timers and event listeners leak, causing Node.js event emitter warnings and memory growth.\n" +
+      "  AssertionError: expected 0 active timers and 0 dangling listeners after destroy(), found active references.\n\n" +
+      "Requirements in src/pipeline.js:\n" +
+      "  - Implement destroy(): must cancel any pending debounce timer, detach all registered listeners on the input source, and mark pipeline as destroyed.\n" +
+      "  - Add getActiveTimerCount(): returns 1 if debounce timer is active/scheduled, 0 otherwise.\n" +
+      "  - Ensure subsequent push() calls on a destroyed pipeline are safely ignored (no-op).\n" +
+      "  - Baseline event batching and flush semantics must keep working without regression.",
+    fixture(ws) {
+      writeWorkspaceFiles(ws, {
+        "package.json": PKG_JSON,
+        "src/pipeline.js":
+          'import { EventEmitter } from "node:events";\n\n' +
+          "export class StreamPipeline extends EventEmitter {\n" +
+          "  constructor(options = {}) {\n" +
+          "    super();\n" +
+          "    this.debounceMs = options.debounceMs || 50;\n" +
+          "    this.batch = [];\n" +
+          "    this.timer = null;\n" +
+          "    this.destroyed = false;\n" +
+          "    this.attachedSource = null;\n" +
+          "    this.boundHandler = null;\n" +
+          "  }\n\n" +
+          "  attachSource(source) {\n" +
+          "    this.attachedSource = source;\n" +
+          "    this.boundHandler = (data) => this.push(data);\n" +
+          '    source.on("data", this.boundHandler);\n' +
+          "  }\n\n" +
+          "  push(item) {\n" +
+          "    if (this.destroyed) return;\n" +
+          "    this.batch.push(item);\n" +
+          "    if (!this.timer) {\n" +
+          "      this.timer = setTimeout(() => this.flush(), this.debounceMs);\n" +
+          "    }\n" +
+          "  }\n\n" +
+          "  flush() {\n" +
+          "    if (this.timer) {\n" +
+          "      clearTimeout(this.timer);\n" +
+          "      this.timer = null;\n" +
+          "    }\n" +
+          "    if (this.batch.length > 0) {\n" +
+          "      const items = [...this.batch];\n" +
+          "      this.batch = [];\n" +
+          '      this.emit("batch", items);\n' +
+          "    }\n" +
+          "  }\n\n" +
+          "  getActiveTimerCount() {\n" +
+          "    return this.timer ? 1 : 0;\n" +
+          "  }\n\n" +
+          "  destroy() {\n" +
+          "    // BUG: does not clearTimeout(this.timer) and does not detach listener from attachedSource\n" +
+          "    this.destroyed = true;\n" +
+          "  }\n" +
+          "}\n",
+        "test/pipeline.test.mjs":
+          'import test from "node:test";\n' +
+          'import assert from "node:assert/strict";\n' +
+          'import { EventEmitter } from "node:events";\n' +
+          'import { StreamPipeline } from "../src/pipeline.js";\n\n' +
+          'test("batches and flushes incoming items upon timeout", async () => {\n' +
+          "  const pipeline = new StreamPipeline({ debounceMs: 20 });\n" +
+          "  const batches = [];\n" +
+          '  pipeline.on("batch", (b) => batches.push(b));\n' +
+          '  pipeline.push("a");\n' +
+          '  pipeline.push("b");\n' +
+          "  await new Promise((r) => setTimeout(r, 60));\n" +
+          '  assert.deepEqual(batches, [["a", "b"]]);\n' +
+          "  pipeline.destroy();\n" +
+          "});\n\n" +
+          'test("manual flush flushes items immediately without waiting", () => {\n' +
+          "  const pipeline = new StreamPipeline({ debounceMs: 1000 });\n" +
+          "  const batches = [];\n" +
+          '  pipeline.on("batch", (b) => batches.push(b));\n' +
+          '  pipeline.push("msg");\n' +
+          "  pipeline.flush();\n" +
+          '  assert.deepEqual(batches, [["msg"]]);\n' +
+          "  pipeline.destroy();\n" +
+          "});\n\n" +
+          'test("soak test: destroy cleans up pending timers and detaches source listeners without leaks", () => {\n' +
+          "  const source = new EventEmitter();\n" +
+          "  const pipelines = [];\n" +
+          "  for (let i = 0; i < 50; i++) {\n" +
+          "    const p = new StreamPipeline({ debounceMs: 10000 });\n" +
+          "    p.attachSource(source);\n" +
+          '    p.push(`data-${i}`);\n' +
+          "    assert.equal(p.getActiveTimerCount(), 1);\n" +
+          "    pipelines.push(p);\n" +
+          "  }\n" +
+          '  assert.equal(source.listenerCount("data"), 50);\n\n' +
+          "  for (const p of pipelines) {\n" +
+          "    p.destroy();\n" +
+          "  }\n\n" +
+          '  assert.equal(source.listenerCount("data"), 0, "All source listeners must be detached on destroy");\n' +
+          "  for (const p of pipelines) {\n" +
+          '    assert.equal(p.getActiveTimerCount(), 0, "All active debounce timers must be cancelled on destroy");\n' +
+          "  }\n" +
+          "});\n",
+      });
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -2763,6 +3055,93 @@ const CANONICAL_FIXES = {
     "  const where = parts.length > 0 ? ` WHERE ${parts.join(' AND ')}` : '';\n" +
     "  return `SELECT * FROM ${table}${where}`;\n" +
     "}\n",
+  "LIVE-BLIND-FAULT-LOCALIZATION":
+    "import { formatCurrency, roundToCents } from '../utils/currency.util.js';\n\n" +
+    "export function calculateOrderTotal(items = [], coupon = null) {\n" +
+    "  const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);\n" +
+    "  let discountAmount = 0;\n" +
+    "  if (coupon) {\n" +
+    "    if (coupon.type === 'percent') {\n" +
+    "      discountAmount = subtotal * (coupon.value / 100);\n" +
+    "    } else if (coupon.type === 'flat') {\n" +
+    "      discountAmount = Math.min(subtotal, coupon.value);\n" +
+    "    }\n" +
+    "  }\n" +
+    "  const total = Math.max(0, subtotal - discountAmount);\n" +
+    "  return {\n" +
+    "    subtotal: formatCurrency(subtotal),\n" +
+    "    discount: formatCurrency(discountAmount || 0),\n" +
+    "    total: formatCurrency(roundToCents(total)),\n" +
+    "  };\n" +
+    "}\n",
+  "LIVE-HARNESS-INV-DUAL-PACKAGE":
+    JSON.stringify(
+      {
+        name: "agent-lib",
+        version: "1.0.0",
+        type: "module",
+        exports: {
+          ".": "./src/index.js",
+          "./strings": "./src/strings.js",
+        },
+        scripts: { test: "node --test" },
+      },
+      null,
+      2,
+    ) + "\n",
+  "LIVE-LONG-HORIZON-RESOURCE-LEAK":
+    'import { EventEmitter } from "node:events";\n\n' +
+    "export class StreamPipeline extends EventEmitter {\n" +
+    "  constructor(options = {}) {\n" +
+    "    super();\n" +
+    "    this.debounceMs = options.debounceMs || 50;\n" +
+    "    this.batch = [];\n" +
+    "    this.timer = null;\n" +
+    "    this.destroyed = false;\n" +
+    "    this.attachedSource = null;\n" +
+    "    this.boundHandler = null;\n" +
+    "  }\n\n" +
+    "  attachSource(source) {\n" +
+    "    this.attachedSource = source;\n" +
+    "    this.boundHandler = (data) => this.push(data);\n" +
+    '    source.on("data", this.boundHandler);\n' +
+    "  }\n\n" +
+    "  push(item) {\n" +
+    "    if (this.destroyed) return;\n" +
+    "    this.batch.push(item);\n" +
+    "    if (!this.timer) {\n" +
+    "      this.timer = setTimeout(() => this.flush(), this.debounceMs);\n" +
+    "    }\n" +
+    "  }\n\n" +
+    "  flush() {\n" +
+    "    if (this.timer) {\n" +
+    "      clearTimeout(this.timer);\n" +
+    "      this.timer = null;\n" +
+    "    }\n" +
+    "    if (this.batch.length > 0) {\n" +
+    "      const items = [...this.batch];\n" +
+    "      this.batch = [];\n" +
+    '      this.emit("batch", items);\n' +
+    "    }\n" +
+    "  }\n\n" +
+    "  getActiveTimerCount() {\n" +
+    "    return this.timer ? 1 : 0;\n" +
+    "  }\n\n" +
+    "  destroy() {\n" +
+    "    this.destroyed = true;\n" +
+    "    if (this.timer) {\n" +
+    "      clearTimeout(this.timer);\n" +
+    "      this.timer = null;\n" +
+    "    }\n" +
+    "    if (this.attachedSource && this.boundHandler) {\n" +
+    '      this.attachedSource.off("data", this.boundHandler);\n' +
+    "      this.attachedSource = null;\n" +
+    "      this.boundHandler = null;\n" +
+    "    }\n" +
+    "    this.batch = [];\n" +
+    "    this.removeAllListeners();\n" +
+    "  }\n" +
+    "}\n",
 };
 
 const CANONICAL_SEMVER_HYPHEN_PATCH =
@@ -2838,6 +3217,10 @@ export async function offlineSelftest(opts = {}) {
       );
     } else if (task.id === "LIVE-EXPRESS-RACE") {
       fs.writeFileSync(path.join(fixedWs, "src/server.js"), CANONICAL_FIXES[task.id], "utf8");
+    } else if (task.id === "LIVE-BLIND-FAULT-LOCALIZATION") {
+      fs.writeFileSync(path.join(fixedWs, "src/services/pricing.service.js"), CANONICAL_FIXES[task.id], "utf8");
+    } else if (task.id === "LIVE-HARNESS-INV-DUAL-PACKAGE") {
+      fs.writeFileSync(path.join(fixedWs, "package.json"), CANONICAL_FIXES[task.id], "utf8");
     } else if (task.sourceFiles.length === 1 && CANONICAL_FIXES[task.id]) {
       fs.writeFileSync(path.join(fixedWs, task.sourceFiles[0]), CANONICAL_FIXES[task.id], "utf8");
     }
@@ -2920,6 +3303,9 @@ function countTargetTests(task) {
     "LIVE-CACHE-STAMPEDE-MUTEX": 1,
     "LIVE-CASCADE-EVENT-BUS": 1,
     "LIVE-SQLITE-SCHEMA-MIGRATION": 1,
+    "LIVE-BLIND-FAULT-LOCALIZATION": 1,
+    "LIVE-HARNESS-INV-DUAL-PACKAGE": 1,
+    "LIVE-LONG-HORIZON-RESOURCE-LEAK": 1,
   };
   return map[task.id] ?? 0;
 }
@@ -2951,7 +3337,7 @@ Usage:
 
 Options:
   --help, -h            Show this help message
-  --offline-selftest    Run 42 offline harness validation checks (no API calls)
+  --offline-selftest    Run 51 offline harness validation checks (no API calls)
   --tasks <id1,id2>     Run specific tasks by ID (comma-separated)
   --model <name>        Override model name (e.g. deepseek-v4.1-flash)
   --json <path>         Write results summary JSON to file

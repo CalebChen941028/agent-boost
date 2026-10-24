@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { LIVE_TASKS, offlineSelftest } from "../scripts/run-live-benchmarks.mjs";
 import { generateHtmlReport, generateMarkdownSummary, generateMultiModelReport, renderExecutionTimelineSvg } from "../scripts/generate-benchmark-report.mjs";
 
-test("Live Benchmark Suite: 12 canonical live engineering tasks are defined with required metadata", () => {
-  assert.equal(LIVE_TASKS.length, 12, "Must contain exactly 12 canonical live benchmark tasks");
+test("Live Benchmark Suite: 15 canonical live engineering tasks are defined with required metadata", () => {
+  assert.equal(LIVE_TASKS.length, 15, "Must contain exactly 15 canonical live benchmark tasks");
 
   for (const task of LIVE_TASKS) {
     assert.ok(task.id, "Task must have an ID");
@@ -15,11 +15,11 @@ test("Live Benchmark Suite: 12 canonical live engineering tasks are defined with
   }
 });
 
-test("Live Benchmark Suite: offline harness machinery selftest executes and passes all 42 checks", async () => {
+test("Live Benchmark Suite: offline harness machinery selftest executes and passes all 51 checks", async () => {
   const result = await offlineSelftest({ silent: true });
   assert.equal(result.ok, true, "All offline harness machinery checks must pass");
   assert.equal(result.failed, 0, "Zero failures allowed in offline harness machinery");
-  assert.equal(result.passed, 42, "Must pass exactly 42 offline harness checks");
+  assert.equal(result.passed, 51, "Must pass exactly 51 offline harness checks");
 });
 
 test("Benchmark Report Generator: generates valid standalone HTML and Markdown reports", () => {

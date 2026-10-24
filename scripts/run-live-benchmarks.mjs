@@ -2495,6 +2495,421 @@ export const LIVE_TASKS = [
       });
     },
   },
+  {
+    id: "LIVE-SWE-BENCH-PRO-NODEBB",
+    name: "SWE-bench Pro NodeBB: Multi-Dimensional Topic Sorting & Invariant Intersections",
+    origin: "SWE-bench Pro V2 (Scale AI / NodeBB instance_NodeBB-05f22361)",
+    category: "Real-World Production OSS (SWE-bench Pro V2)",
+    scenario: "standard",
+    experienceKeywords: "SWE-bench Pro NodeBB getSortedTopics ascending chronological sort old intersect pinned",
+    experienceDimension: "DOM",
+    sourceFiles: ["src/topics/sorted.js"],
+    testFiles: ["test/sorted.test.mjs"],
+    fixtureHasTests: true,
+    expectedBaselineFails: 0,
+    soloSeesTests: true,
+    brief:
+      "Real-world task ported from SWE-bench Pro V2 (instance NodeBB-05f22361):\n" +
+      "Extend NodeBB topic retrieval to support chronological ascending sort (sort: 'old', oldest replies first) across categories, tags, and global topic lists.\n\n" +
+      "Problem Description:\n" +
+      "The current implementation of getSortedTopics in src/topics/sorted.js only supports descending sort modes ('recent', 'posts', 'votes'). When params.sort === 'old' is supplied, the system erroneously falls back to descending or queries invalid sorted sets.\n\n" +
+      "Requirements & Architecture Contracts in src/topics/sorted.js:\n" +
+      "1. Global sort: when params.sort === 'old', query db.getSortedSetRange('topics:recent', 0, meta.config.recentMaxTopics - 1) instead of getSortedSetRevRange.\n" +
+      "2. Tag filter (params.tags.length): when params.sort === 'old', the target set must be 'topics:recent' and the intersection method must be db.getSortedSetIntersect instead of db.getSortedSetRevIntersect.\n" +
+      "3. Category filter (params.cids.length): when params.sort === 'old', include cid:${cid}:tids in sets (same as 'recent') and query with db.getSortedSetRange.\n" +
+      "4. In-memory sorting: sortMap must include old: (a, b) => a.lastposttime - b.lastposttime.\n" +
+      "5. Invariants: Pinned topics must continue to float to top when params.floatPinned is true, and existing 'recent', 'posts', and 'votes' behaviors must NOT regress.",
+    fixture(ws) {
+      writeWorkspaceFiles(ws, {
+        "package.json": PKG_JSON,
+        "src/topics/sorted.js":
+          "export function createTopicsModule(db, meta = { config: { recentMaxTopics: 20 } }) {\n" +
+          "  const Topics = {\n" +
+          "    tools: {\n" +
+          "      async checkPinExpiry(tids) {\n" +
+          "        return tids;\n" +
+          "      },\n" +
+          "    },\n" +
+          "    async getTopicsFields(tids, fields) {\n" +
+          "      return tids.map((tid) => db.getTopic(tid)).filter(Boolean);\n" +
+          "    },\n" +
+          "    async getSortedTopics(params) {\n" +
+          "      let tids = [];\n" +
+          "      if (params.cids && params.cids.length) {\n" +
+          "        tids = await getCidTids(params);\n" +
+          "      } else if (params.tags && params.tags.length) {\n" +
+          "        tids = await getTagTids(params);\n" +
+          "      } else {\n" +
+          "        tids = await db.getSortedSetRevRange(`topics:${params.sort}`, 0, meta.config.recentMaxTopics - 1);\n" +
+          "      }\n\n" +
+          "      if (!tids || !tids.length) {\n" +
+          "        return [];\n" +
+          "      }\n\n" +
+          "      const topicData = await Topics.getTopicsFields(tids, [\n" +
+          '        "tid", "lastposttime", "upvotes", "downvotes", "postcount", "pinned"\n' +
+          "      ]);\n\n" +
+          "      const sortMap = {\n" +
+          "        recent: sortRecent,\n" +
+          "        posts: sortPopular,\n" +
+          "        votes: sortVotes,\n" +
+          "      };\n" +
+          "      const sortFn = sortMap[params.sort] || sortRecent;\n\n" +
+          "      if (params.floatPinned) {\n" +
+          "        floatPinned(topicData, sortFn);\n" +
+          "      } else {\n" +
+          "        topicData.sort(sortFn);\n" +
+          "      }\n" +
+          "      return topicData;\n" +
+          "    },\n" +
+          "  };\n\n" +
+          "  async function getTagTids(params) {\n" +
+          "    const sets = [\n" +
+          "      `topics:${params.sort}`,\n" +
+          '      ...params.tags.map((tag) => `tag:${tag}:topics`),\n' +
+          "    ];\n" +
+          "    return await db.getSortedSetRevIntersect({\n" +
+          "      sets,\n" +
+          "      start: 0,\n" +
+          "      stop: meta.config.recentMaxTopics - 1,\n" +
+          "    });\n" +
+          "  }\n\n" +
+          "  async function getCidTids(params) {\n" +
+          "    const sets = [];\n" +
+          "    const pinnedSets = [];\n" +
+          "    params.cids.forEach((cid) => {\n" +
+          "      if (params.sort === 'recent') {\n" +
+          "        sets.push(`cid:${cid}:tids`);\n" +
+          "      } else {\n" +
+          "        sets.push(`cid:${cid}:tids${params.sort ? `:${params.sort}` : ''}`);\n" +
+          "      }\n" +
+          "      pinnedSets.push(`cid:${cid}:tids:pinned`);\n" +
+          "    });\n" +
+          "    const pinnedTids = await db.getSortedSetRevRange(pinnedSets, 0, -1);\n" +
+          "    const tids = await db.getSortedSetRevRange(sets, 0, meta.config.recentMaxTopics - 1);\n" +
+          "    return pinnedTids.concat(tids);\n" +
+          "  }\n\n" +
+          "  function floatPinned(topics, sortFn) {\n" +
+          "    const pinned = [];\n" +
+          "    const notPinned = [];\n" +
+          "    topics.forEach((topic) => {\n" +
+          "      if (topic && topic.pinned) {\n" +
+          "        pinned.push(topic);\n" +
+          "      } else {\n" +
+          "        notPinned.push(topic);\n" +
+          "      }\n" +
+          "    });\n" +
+          "    pinned.sort(sortFn);\n" +
+          "    notPinned.sort(sortFn);\n" +
+          "    topics.length = 0;\n" +
+          "    topics.push(...pinned, ...notPinned);\n" +
+          "  }\n\n" +
+          "  function sortRecent(a, b) {\n" +
+          "    return b.lastposttime - a.lastposttime;\n" +
+          "  }\n\n" +
+          "  function sortPopular(a, b) {\n" +
+          "    return b.postcount - a.postcount;\n" +
+          "  }\n\n" +
+          "  function sortVotes(a, b) {\n" +
+          "    return (b.upvotes - b.downvotes) - (a.upvotes - a.downvotes);\n" +
+          "  }\n\n" +
+          "  return Topics;\n" +
+          "}\n",
+        "test/sorted.test.mjs":
+          'import test from "node:test";\n' +
+          'import assert from "node:assert/strict";\n' +
+          'import { createTopicsModule } from "../src/topics/sorted.js";\n\n' +
+          "function createMockDb() {\n" +
+          "  const topics = {\n" +
+          "    1: { tid: 1, lastposttime: 1000, postcount: 5, upvotes: 2, downvotes: 0, pinned: false },\n" +
+          "    2: { tid: 2, lastposttime: 2000, postcount: 10, upvotes: 5, downvotes: 1, pinned: false },\n" +
+          "    3: { tid: 3, lastposttime: 3000, postcount: 2, upvotes: 0, downvotes: 0, pinned: true },\n" +
+          "  };\n" +
+          "  return {\n" +
+          "    getTopic: (tid) => topics[tid],\n" +
+          "    async getSortedSetRevRange(key, start, stop) {\n" +
+          "      if (Array.isArray(key)) {\n" +
+          '        if (key[0]?.includes("pinned")) return [3];\n' +
+          "        return [2, 1];\n" +
+          "      }\n" +
+          '      if (key === "topics:recent") return [3, 2, 1];\n' +
+          '      if (key === "topics:posts") return [2, 1, 3];\n' +
+          '      if (key === "topics:votes") return [2, 1, 3];\n' +
+          '      if (key?.includes("pinned")) return [3];\n' +
+          "      return [];\n" +
+          "    },\n" +
+          "    async getSortedSetRange(key, start, stop) {\n" +
+          "      if (Array.isArray(key)) {\n" +
+          '        if (key[0]?.includes("pinned")) return [3];\n' +
+          "        return [1, 2];\n" +
+          "      }\n" +
+          '      if (key === "topics:recent") return [1, 2, 3];\n' +
+          "      return [];\n" +
+          "    },\n" +
+          "    async getSortedSetRevIntersect({ sets, start, stop }) {\n" +
+          "      return [3, 2];\n" +
+          "    },\n" +
+          "    async getSortedSetIntersect({ sets, start, stop }) {\n" +
+          "      return [2, 3];\n" +
+          "    },\n" +
+          "  };\n" +
+          "}\n\n" +
+          'test("baseline: recent sort returns topics descending by lastposttime (newest first)", async () => {\n' +
+          "  const db = createMockDb();\n" +
+          "  const Topics = createTopicsModule(db);\n" +
+          '  const result = await Topics.getSortedTopics({ sort: "recent" });\n' +
+          "  assert.equal(result.length, 3);\n" +
+          "  assert.equal(result[0].tid, 3);\n" +
+          "  assert.equal(result[1].tid, 2);\n" +
+          "  assert.equal(result[2].tid, 1);\n" +
+          "});\n\n" +
+          'test("baseline: posts sort returns topics ordered by postcount", async () => {\n' +
+          "  const db = createMockDb();\n" +
+          "  const Topics = createTopicsModule(db);\n" +
+          '  const result = await Topics.getSortedTopics({ sort: "posts" });\n' +
+          "  assert.equal(result[0].tid, 2);\n" +
+          "  assert.equal(result[0].postcount, 10);\n" +
+          "});\n\n" +
+          'test("baseline: floatPinned floats pinned topics to top in category query", async () => {\n' +
+          "  const db = createMockDb();\n" +
+          "  const Topics = createTopicsModule(db);\n" +
+          '  const result = await Topics.getSortedTopics({ cids: [1], sort: "recent", floatPinned: true });\n' +
+          "  assert.equal(result[0].pinned, true);\n" +
+          "  assert.equal(result[0].tid, 3);\n" +
+          "});\n\n" +
+          'test("target: old sort queries ascending range for global, tag, and cid topics", async () => {\n' +
+          "  const db = createMockDb();\n" +
+          "  const Topics = createTopicsModule(db);\n\n" +
+          '  const globalRes = await Topics.getSortedTopics({ sort: "old" });\n' +
+          "  assert.equal(globalRes.length, 3);\n" +
+          '  assert.equal(globalRes[0].tid, 1, "Oldest topic must be first in old sort");\n' +
+          "  assert.equal(globalRes[1].tid, 2);\n" +
+          "  assert.equal(globalRes[2].tid, 3);\n\n" +
+          '  const catRes = await Topics.getSortedTopics({ cids: [1], sort: "old", floatPinned: true });\n' +
+          '  assert.equal(catRes[0].pinned, true, "Pinned topic must remain at top");\n' +
+          '  assert.equal(catRes[1].tid, 1, "Non-pinned topics must be sorted oldest first");\n' +
+          "  assert.equal(catRes[2].tid, 2);\n\n" +
+          '  const tagRes = await Topics.getSortedTopics({ tags: ["javascript"], sort: "old" });\n' +
+          '  assert.equal(tagRes[0].tid, 2, "Tag old sort must invoke getSortedSetIntersect");\n' +
+          "});\n",
+      });
+    },
+  },
+  {
+    id: "LIVE-RED-HERRING-CIRCULAR-DECOY",
+    name: "Red Herring Decoy: Downstream Serializer Crash via Upstream Circular Context Leak",
+    origin: "Harness² Adversarial Invariant Injection / Agent Triage Failure Taxonomy (live)",
+    category: "Adversarial Fault Localization",
+    scenario: "standard",
+    experienceKeywords: "red herring decoy downstream crash circular structure json response serializer upstream session context",
+    experienceDimension: "DOM",
+    sourceFiles: ["src/services/order-service.js", "src/serializers/response-serializer.js"],
+    testFiles: ["test/order-pipeline.test.mjs"],
+    fixtureHasTests: true,
+    expectedBaselineFails: 0,
+    soloSeesTests: true,
+    brief:
+      "An incident was reported on the checkout API: requests with active transaction spans crash during response formatting.\n\n" +
+      "Error Log / Stack Trace:\n" +
+      "  TypeError: Converting circular structure to JSON\n" +
+      "      --> starting at object with constructor 'Object'\n" +
+      "      |     property 'transaction' -> object with constructor 'Object'\n" +
+      "      --- property 'parent' closes the circle\n" +
+      "      at JSON.stringify (<anonymous>)\n" +
+      "      at serializeResponse (src/serializers/response-serializer.js:9:15)\n" +
+      "      at TestContext.<anonymous> (test/order-pipeline.test.mjs:34:16)\n\n" +
+      "System Architecture & Contracts:\n" +
+      "- src/serializers/response-serializer.js: Downstream serialization gateway.\n" +
+      "  INVARIANT CONTRACT: This file enforces strict DTO hygiene and MUST NOT be modified or weakened with try/catch / circular stripping hacks. The downstream serializer must throw when given corrupt circular inputs.\n" +
+      "- src/services/order-service.js: Upstream checkout service. When building the order record, it must extract ONLY clean audit metadata ({ traceId, userId }) from requestContext rather than attaching the entire raw runtime context object containing circular transaction handles.\n\n" +
+      "Task:\n" +
+      "Fix the crash at the true architectural source so checkout requests with active request contexts serialize cleanly without leaking circular handles or violating downstream DTO invariants.",
+    fixture(ws) {
+      writeWorkspaceFiles(ws, {
+        "package.json": PKG_JSON,
+        "src/serializers/response-serializer.js":
+          "// INVARIANT CONTRACT: Downstream response serializer must remain a strict, clean JSON serializer.\n" +
+          "// Do NOT swallow circular errors or modify this file — upstream services must provide clean DTOs.\n" +
+          "export function serializeResponse(statusCode, data) {\n" +
+          "  const payload = {\n" +
+          "    status: statusCode,\n" +
+          "    data,\n" +
+          "    timestamp: new Date().toISOString(),\n" +
+          "  };\n" +
+          "  return JSON.stringify(payload);\n" +
+          "}\n",
+        "src/services/order-service.js":
+          "export class OrderService {\n" +
+          "  constructor(db) {\n" +
+          "    this.db = db;\n" +
+          "  }\n\n" +
+          "  async checkoutOrder(orderInput, requestContext = null) {\n" +
+          '    if (!orderInput || typeof orderInput.total !== "number") {\n' +
+          '      throw new Error("Invalid order input");\n' +
+          "    }\n" +
+          '    const orderId = "ord_" + Math.random().toString(36).slice(2, 9);\n' +
+          "    const order = {\n" +
+          "      id: orderId,\n" +
+          "      total: orderInput.total,\n" +
+          "      items: orderInput.items || [],\n" +
+          "      // BUG (Red Herring): attaches raw requestContext directly to order.audit.\n" +
+          "      // In production, requestContext contains active event listeners, transaction handles,\n" +
+          "      // and circular parent-child trace spans. Attaching raw context causes downstream\n" +
+          "      // serializeResponse() to throw TypeError: Converting circular structure to JSON!\n" +
+          "      // Must extract ONLY clean audit metadata: { traceId: requestContext?.traceId, userId: requestContext?.userId }\n" +
+          "      audit: requestContext,\n" +
+          "    };\n" +
+          "    return order;\n" +
+          "  }\n" +
+          "}\n",
+        "test/order-pipeline.test.mjs":
+          'import test from "node:test";\n' +
+          'import assert from "node:assert/strict";\n' +
+          'import { OrderService } from "../src/services/order-service.js";\n' +
+          'import { serializeResponse } from "../src/serializers/response-serializer.js";\n\n' +
+          'test("baseline: order without circular context serializes valid JSON", async () => {\n' +
+          "  const service = new OrderService();\n" +
+          '  const order = await service.checkoutOrder({ total: 100, items: ["item_1"] }, null);\n' +
+          "  const json = serializeResponse(200, order);\n" +
+          "  const parsed = JSON.parse(json);\n" +
+          "  assert.equal(parsed.status, 200);\n" +
+          "  assert.equal(parsed.data.total, 100);\n" +
+          "});\n\n" +
+          'test("baseline: downstream serializer contract: must throw on invalid circular objects to preserve DTO hygiene", () => {\n' +
+          "  const circular = {};\n" +
+          "  circular.self = circular;\n" +
+          "  assert.throws(() => serializeResponse(200, circular), {\n" +
+          '    name: "TypeError",\n' +
+          "    message: /Converting circular structure to JSON/,\n" +
+          "  });\n" +
+          "});\n\n" +
+          'test("target: order checkout with active request context extracts clean audit metadata and serializes cleanly", async () => {\n' +
+          "  const service = new OrderService();\n" +
+          "  const circularContext = {\n" +
+          '    traceId: "trc_998877",\n' +
+          '    userId: "usr_42",\n' +
+          '    transaction: { id: "tx_1" },\n' +
+          "  };\n" +
+          "  circularContext.transaction.parent = circularContext; // circular link!\n\n" +
+          '  const order = await service.checkoutOrder({ total: 250, items: ["item_a", "item_b"] }, circularContext);\n' +
+          "  const json = serializeResponse(200, order);\n" +
+          "  const parsed = JSON.parse(json);\n" +
+          "  assert.equal(parsed.status, 200);\n" +
+          "  assert.equal(parsed.data.total, 250);\n" +
+          '  assert.equal(parsed.data.audit?.traceId, "trc_998877");\n' +
+          '  assert.equal(order.audit?.transaction, undefined, "Must NOT leak internal circular transaction handle");\n' +
+          "});\n",
+      });
+    },
+  },
+  {
+    id: "LIVE-DISTRIBUTED-CONTRACT-RACE",
+    name: "Distributed Microservices Contract Drift: Concurrent Dual-Agent Gateway/Billing Sync",
+    origin: "Google Research Harness² Multi-Agent Stress Test (Distributed Protocol Drift)",
+    category: "Multi-Agent Concurrency & Shared Contract Coordination",
+    scenario: "parallel-race",
+    experienceKeywords: "distributed microservices contract drift parallel dual-agent gateway billing protocol idempotency",
+    experienceDimension: "INV",
+    sourceFiles: ["src/contracts/protocol.js", "src/services/gateway.js", "src/services/billing.js"],
+    testFiles: ["test/billing-flow.test.mjs"],
+    assemblyFiles: ["src/contracts/protocol.js"],
+    fixtureHasTests: true,
+    expectedBaselineFails: 0,
+    soloSeesTests: false,
+    contracts: [
+      { module: "src/contracts/protocol.js", api: "export const PROTOCOL_VERSION = '2.0.0'; export const GATEWAY_ACTIONS; export const BILLING_STATUSES;" },
+      { module: "src/services/gateway.js", api: "export function routeBillingRequest(request) — validates idempotencyKey and routes v2" },
+      { module: "src/services/billing.js", api: "export function settleTransaction(routedRequest) — settles in integer cents" },
+    ],
+    soloSubagents: [
+      {
+        name: "gateway-team",
+        scope:
+          "Upgrade Gateway to Protocol v2.0.0: Update src/contracts/protocol.js to export PROTOCOL_VERSION = '2.0.0' " +
+          "and export const GATEWAY_ACTIONS = ['ROUTE_PAYMENT', 'REFUND_PAYMENT']. " +
+          "Update src/services/gateway.js to require request.idempotencyKey (throw Error('Missing idempotencyKey') if missing) " +
+          "and return action: 'ROUTE_PAYMENT'.",
+        sharedFiles: ["src/contracts/protocol.js"],
+        allowedFiles: ["src/contracts/protocol.js", "src/services/gateway.js"],
+      },
+      {
+        name: "billing-team",
+        scope:
+          "Upgrade Billing Service to Protocol v2.0.0: Update src/contracts/protocol.js to export PROTOCOL_VERSION = '2.0.0' " +
+          "and export const BILLING_STATUSES = ['SETTLED', 'REJECTED', 'PENDING']. " +
+          "Update src/services/billing.js to return status: 'SETTLED', cents: Math.round(Number(routedRequest.payload.amount) * 100), " +
+          "and idempotencyKey: routedRequest.idempotencyKey.",
+        sharedFiles: ["src/contracts/protocol.js"],
+        allowedFiles: ["src/contracts/protocol.js", "src/services/billing.js"],
+      },
+    ],
+    brief:
+      "Two feature teams upgrade a distributed microservices billing platform to Protocol v2.0.0 in parallel.\n\n" +
+      "Architecture & Contracts:\n" +
+      "- Team A (Gateway Team): Updates API gateway routing in src/services/gateway.js to enforce request.idempotencyKey and use GATEWAY_ACTIONS[0] ('ROUTE_PAYMENT'). Also updates shared contract src/contracts/protocol.js.\n" +
+      "- Team B (Billing Team): Updates billing settlement in src/services/billing.js to calculate integer cents and return status: BILLING_STATUSES[0] ('SETTLED'). Also updates shared contract src/contracts/protocol.js.\n" +
+      "- Shared Protocol Contract: src/contracts/protocol.js must export PROTOCOL_VERSION = '2.0.0', SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP'], GATEWAY_ACTIONS = ['ROUTE_PAYMENT', 'REFUND_PAYMENT'], and BILLING_STATUSES = ['SETTLED', 'REJECTED', 'PENDING'].\n\n" +
+      "Both teams must coordinate their changes so the shared protocol contract retains BOTH teams' exports and end-to-end payment routing succeeds.",
+    fixture(ws) {
+      writeWorkspaceFiles(ws, {
+        "package.json": PKG_JSON,
+        "src/contracts/protocol.js":
+          'export const PROTOCOL_VERSION = "1.0.0";\n' +
+          'export const SUPPORTED_CURRENCIES = ["USD", "EUR"];\n',
+        "src/services/gateway.js":
+          'import { PROTOCOL_VERSION, SUPPORTED_CURRENCIES } from "../contracts/protocol.js";\n\n' +
+          "export function routeBillingRequest(request) {\n" +
+          "  if (!request.currency || !SUPPORTED_CURRENCIES.includes(request.currency)) {\n" +
+          '    throw new Error("Unsupported currency: " + request.currency);\n' +
+          "  }\n" +
+          "  return {\n" +
+          "    routed: true,\n" +
+          "    version: PROTOCOL_VERSION,\n" +
+          "    payload: request,\n" +
+          "  };\n" +
+          "}\n",
+        "src/services/billing.js":
+          'import { PROTOCOL_VERSION } from "../contracts/protocol.js";\n\n' +
+          "export function settleTransaction(routedRequest) {\n" +
+          "  return {\n" +
+          "    settled: true,\n" +
+          "    version: PROTOCOL_VERSION,\n" +
+          "    amount: routedRequest.payload.amount,\n" +
+          "  };\n" +
+          "}\n",
+        "test/billing-flow.test.mjs":
+          'import test from "node:test";\n' +
+          'import assert from "node:assert/strict";\n' +
+          'import * as protocol from "../src/contracts/protocol.js";\n' +
+          'import { routeBillingRequest } from "../src/services/gateway.js";\n' +
+          'import { settleTransaction } from "../src/services/billing.js";\n\n' +
+          'test("baseline: gateway rejects unsupported currency", () => {\n' +
+          '  assert.throws(() => routeBillingRequest({ currency: "XYZ", amount: 10, idempotencyKey: "k1" }), {\n' +
+          "    message: /Unsupported currency/,\n" +
+          "  });\n" +
+          "});\n\n" +
+          'test("target: protocol contract exports both GATEWAY_ACTIONS and BILLING_STATUSES under v2.0.0", () => {\n' +
+          '  assert.equal(protocol.PROTOCOL_VERSION, "2.0.0");\n' +
+          '  assert.ok(Array.isArray(protocol.GATEWAY_ACTIONS), "Must export GATEWAY_ACTIONS");\n' +
+          '  assert.ok(protocol.GATEWAY_ACTIONS.includes("ROUTE_PAYMENT"));\n' +
+          '  assert.ok(Array.isArray(protocol.BILLING_STATUSES), "Must export BILLING_STATUSES");\n' +
+          '  assert.ok(protocol.BILLING_STATUSES.includes("SETTLED"));\n' +
+          "});\n\n" +
+          'test("target: gateway requires idempotencyKey and billing settles in cents", () => {\n' +
+          '  assert.throws(() => routeBillingRequest({ currency: "USD", amount: 15.5 }), {\n' +
+          "    message: /Missing idempotencyKey/,\n" +
+          "  });\n\n" +
+          '  const routed = routeBillingRequest({ currency: "USD", amount: 15.5, idempotencyKey: "idem_abc123" });\n' +
+          "  assert.equal(routed.routed, true);\n" +
+          '  assert.equal(routed.idempotencyKey, "idem_abc123");\n' +
+          '  assert.equal(routed.action, "ROUTE_PAYMENT");\n\n' +
+          "  const settled = settleTransaction(routed);\n" +
+          '  assert.equal(settled.status, "SETTLED");\n' +
+          "  assert.equal(settled.cents, 1550);\n" +
+          '  assert.equal(settled.idempotencyKey, "idem_abc123");\n' +
+          "});\n",
+      });
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -3142,6 +3557,162 @@ const CANONICAL_FIXES = {
     "    this.removeAllListeners();\n" +
     "  }\n" +
     "}\n",
+  "LIVE-SWE-BENCH-PRO-NODEBB":
+    "export function createTopicsModule(db, meta = { config: { recentMaxTopics: 20 } }) {\n" +
+    "  const Topics = {\n" +
+    "    tools: {\n" +
+    "      async checkPinExpiry(tids) {\n" +
+    "        return tids;\n" +
+    "      },\n" +
+    "    },\n" +
+    "    async getTopicsFields(tids, fields) {\n" +
+    "      return tids.map((tid) => db.getTopic(tid)).filter(Boolean);\n" +
+    "    },\n" +
+    "    async getSortedTopics(params) {\n" +
+    "      let tids = [];\n" +
+    "      if (params.cids && params.cids.length) {\n" +
+    "        tids = await getCidTids(params);\n" +
+    "      } else if (params.tags && params.tags.length) {\n" +
+    "        tids = await getTagTids(params);\n" +
+    "      } else if (params.sort === 'old') {\n" +
+    "        tids = await db.getSortedSetRange('topics:recent', 0, meta.config.recentMaxTopics - 1);\n" +
+    "      } else {\n" +
+    "        tids = await db.getSortedSetRevRange(`topics:${params.sort}`, 0, meta.config.recentMaxTopics - 1);\n" +
+    "      }\n\n" +
+    "      if (!tids || !tids.length) {\n" +
+    "        return [];\n" +
+    "      }\n\n" +
+    "      const topicData = await Topics.getTopicsFields(tids, [\n" +
+    '        "tid", "lastposttime", "upvotes", "downvotes", "postcount", "pinned"\n' +
+    "      ]);\n\n" +
+    "      const sortMap = {\n" +
+    "        recent: sortRecent,\n" +
+    "        old: sortOld,\n" +
+    "        posts: sortPopular,\n" +
+    "        votes: sortVotes,\n" +
+    "      };\n" +
+    "      const sortFn = sortMap[params.sort] || sortRecent;\n\n" +
+    "      if (params.floatPinned) {\n" +
+    "        floatPinned(topicData, sortFn);\n" +
+    "      } else {\n" +
+    "        topicData.sort(sortFn);\n" +
+    "      }\n" +
+    "      return topicData;\n" +
+    "    },\n" +
+    "  };\n\n" +
+    "  async function getTagTids(params) {\n" +
+    "    const sets = [\n" +
+    "      params.sort === 'old' ? 'topics:recent' : `topics:${params.sort}`,\n" +
+    '      ...params.tags.map((tag) => `tag:${tag}:topics`),\n' +
+    "    ];\n" +
+    "    const method = params.sort === 'old' ? 'getSortedSetIntersect' : 'getSortedSetRevIntersect';\n" +
+    "    return await db[method]({\n" +
+    "      sets,\n" +
+    "      start: 0,\n" +
+    "      stop: meta.config.recentMaxTopics - 1,\n" +
+    "    });\n" +
+    "  }\n\n" +
+    "  async function getCidTids(params) {\n" +
+    "    const sets = [];\n" +
+    "    const pinnedSets = [];\n" +
+    "    params.cids.forEach((cid) => {\n" +
+    "      if (params.sort === 'recent' || params.sort === 'old') {\n" +
+    "        sets.push(`cid:${cid}:tids`);\n" +
+    "      } else {\n" +
+    "        sets.push(`cid:${cid}:tids${params.sort ? `:${params.sort}` : ''}`);\n" +
+    "      }\n" +
+    "      pinnedSets.push(`cid:${cid}:tids:pinned`);\n" +
+    "    });\n" +
+    "    const pinnedTids = await db.getSortedSetRevRange(pinnedSets, 0, -1);\n" +
+    "    const method = params.sort === 'old' ? 'getSortedSetRange' : 'getSortedSetRevRange';\n" +
+    "    const tids = await db[method](sets, 0, meta.config.recentMaxTopics - 1);\n" +
+    "    return pinnedTids.concat(tids);\n" +
+    "  }\n\n" +
+    "  function floatPinned(topics, sortFn) {\n" +
+    "    const pinned = [];\n" +
+    "    const notPinned = [];\n" +
+    "    topics.forEach((topic) => {\n" +
+    "      if (topic && topic.pinned) {\n" +
+    "        pinned.push(topic);\n" +
+    "      } else {\n" +
+    "        notPinned.push(topic);\n" +
+    "      }\n" +
+    "    });\n" +
+    "    pinned.sort(sortFn);\n" +
+    "    notPinned.sort(sortFn);\n" +
+    "    topics.length = 0;\n" +
+    "    topics.push(...pinned, ...notPinned);\n" +
+    "  }\n\n" +
+    "  function sortRecent(a, b) {\n" +
+    "    return b.lastposttime - a.lastposttime;\n" +
+    "  }\n\n" +
+    "  function sortOld(a, b) {\n" +
+    "    return a.lastposttime - b.lastposttime;\n" +
+    "  }\n\n" +
+    "  function sortPopular(a, b) {\n" +
+    "    return b.postcount - a.postcount;\n" +
+    "  }\n\n" +
+    "  function sortVotes(a, b) {\n" +
+    "    return (b.upvotes - b.downvotes) - (a.upvotes - a.downvotes);\n" +
+    "  }\n\n" +
+    "  return Topics;\n" +
+    "}\n",
+  "LIVE-RED-HERRING-CIRCULAR-DECOY":
+    "export class OrderService {\n" +
+    "  constructor(db) {\n" +
+    "    this.db = db;\n" +
+    "  }\n\n" +
+    "  async checkoutOrder(orderInput, requestContext = null) {\n" +
+    '    if (!orderInput || typeof orderInput.total !== "number") {\n' +
+    '      throw new Error("Invalid order input");\n' +
+    "    }\n" +
+    '    const orderId = "ord_" + Math.random().toString(36).slice(2, 9);\n' +
+    "    const order = {\n" +
+    "      id: orderId,\n" +
+    "      total: orderInput.total,\n" +
+    "      items: orderInput.items || [],\n" +
+    "      audit: requestContext ? {\n" +
+    "        traceId: requestContext.traceId || null,\n" +
+    "        userId: requestContext.userId || null,\n" +
+    "      } : null,\n" +
+    "    };\n" +
+    "    return order;\n" +
+    "  }\n" +
+    "}\n",
+  "LIVE-DISTRIBUTED-CONTRACT-RACE": {
+    "src/contracts/protocol.js":
+      'export const PROTOCOL_VERSION = "2.0.0";\n' +
+      'export const SUPPORTED_CURRENCIES = ["USD", "EUR", "GBP"];\n' +
+      'export const GATEWAY_ACTIONS = ["ROUTE_PAYMENT", "REFUND_PAYMENT"];\n' +
+      'export const BILLING_STATUSES = ["SETTLED", "REJECTED", "PENDING"];\n',
+    "src/services/gateway.js":
+      'import { PROTOCOL_VERSION, SUPPORTED_CURRENCIES, GATEWAY_ACTIONS } from "../contracts/protocol.js";\n\n' +
+      "export function routeBillingRequest(request) {\n" +
+      "  if (!request.idempotencyKey) {\n" +
+      '    throw new Error("Missing idempotencyKey");\n' +
+      "  }\n" +
+      "  if (!request.currency || !SUPPORTED_CURRENCIES.includes(request.currency)) {\n" +
+      '    throw new Error("Unsupported currency: " + request.currency);\n' +
+      "  }\n" +
+      "  return {\n" +
+      "    routed: true,\n" +
+      "    version: PROTOCOL_VERSION,\n" +
+      "    action: GATEWAY_ACTIONS[0],\n" +
+      "    idempotencyKey: request.idempotencyKey,\n" +
+      "    payload: request,\n" +
+      "  };\n" +
+      "}\n",
+    "src/services/billing.js":
+      'import { PROTOCOL_VERSION, BILLING_STATUSES } from "../contracts/protocol.js";\n\n' +
+      "export function settleTransaction(routedRequest) {\n" +
+      "  return {\n" +
+      "    status: BILLING_STATUSES[0],\n" +
+      "    version: PROTOCOL_VERSION,\n" +
+      "    cents: Math.round(Number(routedRequest.payload.amount) * 100),\n" +
+      "    idempotencyKey: routedRequest.idempotencyKey,\n" +
+      "  };\n" +
+      "}\n",
+  },
 };
 
 const CANONICAL_SEMVER_HYPHEN_PATCH =
@@ -3221,6 +3792,12 @@ export async function offlineSelftest(opts = {}) {
       fs.writeFileSync(path.join(fixedWs, "src/services/pricing.service.js"), CANONICAL_FIXES[task.id], "utf8");
     } else if (task.id === "LIVE-HARNESS-INV-DUAL-PACKAGE") {
       fs.writeFileSync(path.join(fixedWs, "package.json"), CANONICAL_FIXES[task.id], "utf8");
+    } else if (task.id === "LIVE-SWE-BENCH-PRO-NODEBB") {
+      fs.writeFileSync(path.join(fixedWs, "src/topics/sorted.js"), CANONICAL_FIXES[task.id], "utf8");
+    } else if (task.id === "LIVE-RED-HERRING-CIRCULAR-DECOY") {
+      fs.writeFileSync(path.join(fixedWs, "src/services/order-service.js"), CANONICAL_FIXES[task.id], "utf8");
+    } else if (task.id === "LIVE-DISTRIBUTED-CONTRACT-RACE") {
+      writeWorkspaceFiles(fixedWs, CANONICAL_FIXES[task.id]);
     } else if (task.sourceFiles.length === 1 && CANONICAL_FIXES[task.id]) {
       fs.writeFileSync(path.join(fixedWs, task.sourceFiles[0]), CANONICAL_FIXES[task.id], "utf8");
     }
@@ -3306,6 +3883,9 @@ function countTargetTests(task) {
     "LIVE-BLIND-FAULT-LOCALIZATION": 1,
     "LIVE-HARNESS-INV-DUAL-PACKAGE": 1,
     "LIVE-LONG-HORIZON-RESOURCE-LEAK": 1,
+    "LIVE-SWE-BENCH-PRO-NODEBB": 1,
+    "LIVE-RED-HERRING-CIRCULAR-DECOY": 1,
+    "LIVE-DISTRIBUTED-CONTRACT-RACE": 2,
   };
   return map[task.id] ?? 0;
 }
@@ -3337,7 +3917,7 @@ Usage:
 
 Options:
   --help, -h            Show this help message
-  --offline-selftest    Run 51 offline harness validation checks (no API calls)
+  --offline-selftest    Run 60 offline harness validation checks (no API calls)
   --tasks <id1,id2>     Run specific tasks by ID (comma-separated)
   --model <name>        Override model name (e.g. deepseek-v4.1-flash)
   --json <path>         Write results summary JSON to file

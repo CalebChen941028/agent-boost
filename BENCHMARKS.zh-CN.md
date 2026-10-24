@@ -6,7 +6,7 @@
 
 [English](BENCHMARKS.md) | [简体中文](BENCHMARKS.zh-CN.md)
 
-本报告用计量过的真实网络流量回答一个问题：大脑同为 mimo-v2.6-flash，换掉它外围的工程工具链，结果差多少？依据 **BugsJS**、**SWE-bench / SWE-bench Verified**、**HumanEval-X** 的典型故障原型构造的五项可执行工程任务，以真实双轨对决方式运行：
+本报告用计量过的真实网络流量回答一个问题：大脑同为 mimo-v2.6-flash，换掉它外围的工程工具链，结果差多少？依据 **BugsJS**、**SWE-bench / SWE-bench Verified**、**HumanEval-X** 的典型故障原型构造的十项可执行工程任务，以真实双轨对决方式运行：
 
 - **Solo mimo-v2.6-flash（对照组）**：单一模型，裸提示词，零工具。没有文件冲突门禁、没有 Git 回滚、没有复现测试合成、没有终身记忆、没有独立裁判。
 - **mimo-v2.6-flash + agent-boost（实验组）**：同一个大脑，驱动 v0.4.0 五阶段状态机——`evaluateTaskComplexity` 算力分层、`matchExperienceCues` 经验召回、`detectTargetFileConflicts` 文件所有权门禁、按工作流执行、LATS Git 检查点与真实 `git reset --hard` 回滚、`verify_synth.sh` 测试合成、`calculateYardstickScore` 六维量化裁判。
@@ -19,10 +19,10 @@
 | :--- | :--- |
 | 端点 | `https://opencode.ai/zen/go/v1/chat/completions`（OpenCode Zen 网关，OpenAI 兼容） |
 | 模型 | `mimo-v2.6-flash`，temperature 0.2，双轨一致 |
-| 会话 | `agent-boost-live-9e238236`，始于 2026-10-24T12:41:53Z，Node v22.23.1 |
-| 真实 HTTP 调用 | 37 次，37 次成功，0 次失败/重试（26 次轨道调用 + 10 次裁判调用 + 1 次预检） |
-| 计量 Token | 26 次轨道调用共 24,149（网关 `usage` 计量；裁判与预检另计，完整台账见 JSON 导出） |
-| 预估费用 | 轨道流量按牌价约 $0.005（输入 $0.14/M，输出 $0.28/M） |
+| 会话 | `agent-boost-live-a8c21e96`，始于 2026-10-24T14:28:53Z，Node v22.23.1 |
+| 真实 HTTP 调用 | 65 次，65 次成功，0 次失败/重试（完整审计台账见 JSON 导出） |
+| 计量 Token | 44,791（Solo 14,961 + Boost 29,830，网关 `usage` 实测计量） |
+| 预估费用 | 轨道流量按牌价约 $0.01（输入 $0.14/M，输出 $0.28/M） |
 
 ---
 
@@ -33,41 +33,46 @@
 > 2. **公平性协议。** 任务简报、夹具仓库、不可变测试套件、裁判提示词，双轨完全一致。Solo 可带原始失败输出重试至多 3 次；Boost 的修复预算来自 `evaluateTaskComplexity`（simple 2 / standard 3 / hard 5）——算力分配本身就是实验处理的一部分。夹具测试套件对双轨是冻结规格：工作流规划声明测试文件所有权会被剥离，且每次跑测试前恢复原套件，任何一轨都无法改写给自己打分的卷子。
 > 3. **基准真相（ground truth）。** 带夹具套件的任务直接由该套件判分。无验证命令的任务（`LIVE-REST-SYNTH`）在双轨都宣布完成后，才向两个工作区追加同一份隐藏测试——Solo 的"做完了，仓库没配测试命令"在其运行期间不会被拆穿，这正是被测场景本身。
 > 4. **裁判。** 双轨由同一个 agent-as-a-judge 调用打分（对交付 diff 加最终测试结果的独立评审）。裁判发现喂给 `calculateYardstickScore`；通过门禁为 ≥ 85 分且无高危发现。本次运行的全部裁判判定均解析自模型输出（未触发确定性回退）。
-> 5. **本次运行没展示什么。** 回滚计数器为零。最终协议下没有任何修复轮破坏基线测试——模型在五项任务上的修复都是干净的，一次 `git reset --hard` 都没触发。回滚机制本身是真实的（协议校准运行中真实执行过并留有证据，见第 6 节），只是这次没被需要。诚实的读法是：这五项任务上，实验组的胜利来自协调与验证，不来自修复神迹。
+> 5. **本次运行没展示什么。** 回滚计数器为零。最终协议下没有任何修复轮破坏基线测试——模型在十项任务上的修复都是干净的，一次 `git reset --hard` 都没触发。回滚机制本身是真实的（协议校准运行中真实执行过并留有证据，见第 6 节），只是这次没被需要。诚实的读法是：这十项任务上，实验组的胜利来自协调与验证，不来自修复神迹。
 
 ---
 
 ## 2. 实盘对比矩阵
 
-运行器自己打印这段汇总。下表每个数值都能在 `npm run benchmark:live` 的 stdout 里 grep 到（右列给出对应行）。
+运行器自己打印这段汇总。下表每个数值都能在 `npm run benchmark` 的 stdout 里 grep 到（右列给出对应行）。
 
 | 评测维度 | Solo mimo-v2.6-flash（无工具） | mimo-v2.6-flash + agent-boost (v0.4.0) | 溯源（stdout 行） |
 | :--- | :--- | :--- | :--- |
-| **任务通过率** | **4/5 (80.0%)** | **5/5 (100.0%)** | `Solo mimo-v2.6-flash pass rate: 4/5 (80.0%)`、`mimo-v2.6-flash + agent-boost pass rate: 5/5 (100.0%)` |
-| **六维裁判平均分** | 96.6 / 100 | **99.8 / 100（+3.2 分）** | `Mean yardstick score (judge): solo 96.6/100 -> boost 99.8/100` |
-| **计量输入 Token** | 6,463 | 5,447——0.84x | `Metered API tokens` 各行 |
-| **计量输出 Token** | 2,557 | **9,682——3.79x** | `Metered API tokens` 各行 |
-| **计量 Token 合计** | **9,020** | 15,129——1.677x | `Token ratio (boost/solo): 1.677x` |
-| **平均单次调用 API 延迟** | **7,160 ms** | 14,086 ms | `Mean per-call API latency: solo 7160ms -> boost 14086ms` |
-| **并行写冲突拦截** | 0——两个子代理同写 `src/server.js`，后写覆盖 | **5/5 任务在动手前被门禁拦截** | `Parallel write conflicts intercepted (boost): 5` |
+| **任务通过率** | **9/10 (90.0%)** | **10/10 (100.0%)** | `Solo mimo-v2.6-flash pass rate: 9/10 (90.0%)`、`mimo-v2.6-flash + agent-boost pass rate: 10/10 (100.0%)` |
+| **六维裁判平均分** | 98.2 / 100 | **99.6 / 100（+1.4 分）** | `Mean yardstick score (judge): solo 98.2/100 -> boost 99.6/100` |
+| **计量输入 Token** | 10,440 | 9,672——0.926x | `Metered API tokens` 各行 |
+| **计量输出 Token** | 4,521 | **20,158——4.459x** | `Metered API tokens` 各行 |
+| **计量 Token 合计** | **14,961** | 29,830——1.994x | `Token ratio (boost/solo): 1.994x` |
+| **平均单次调用 API 延迟** | **7,834 ms** | 18,472 ms | `Mean per-call API latency: solo 7834ms -> boost 18472ms` |
+| **并行写冲突拦截** | 0——两个子代理同写 `src/server.js`，后写覆盖 | **7/10 任务在动手前被门禁拦截** | `Parallel write conflicts intercepted (boost): 7` |
 | **测试合成覆盖** | 0——交付不可执行的完成宣称 | **1/1（11 条断言，语法校验通过）** | `Test synthesis coverage (boost): 1/1` |
 | **Git 回滚次数** | 不适用 | **0（未发生基线回归）** | `Git reset --hard rollbacks executed (boost): 0` |
 
-Token 两行的诚实读法：实验组输入 Token 反而更少（单次调用上下文更短——按工作流裁剪的提示词，不是整仓倾倒），但输出 Token 是 3.8 倍——这是 mimo 的推理预算在规划、重规划、执行、裁判多个角色上的计量价格。工具链以 1.677 倍总计量成本、约 2 倍墙钟时间，买到协调与验证保证。
+Token 两行的诚实读法：实验组输入 Token 反而更少（单次调用上下文更短——按工作流裁剪的提示词，不是整仓倾倒），但输出 Token 是 4.46 倍——这是 mimo 的推理预算在规划、重规划、执行、裁判多个角色上的计量价格。工具链以 1.994 倍总计量成本、约 2.3 倍墙钟时间，买到协调与验证保证。
 
 ---
 
-## 3. 五项任务实盘记分牌
+## 3. 十项任务实盘记分牌
 
-转写自同一运行的 `LIVE SCOREBOARD MATRIX` 块。`Lat` 为平均单次调用 API 延迟；Token 为该轨自身生成/规划/修复流量的网关计量（裁判调用在 JSON 台账中单独计量）。
+转写自会话 `agent-boost-live-a8c21e96` 的 `LIVE SCOREBOARD MATRIX` 块。`Lat` 为平均单次调用 API 延迟；Token 为该轨自身生成/规划/修复流量的网关计量。
 
 | 任务 | 类别 | Solo（退出码 / 分 / 尝试 / Token / Lat） | Boost（退出码 / 分 / Token / Lat） | Boost 证据 | 结果 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `LIVE-EXPRESS-RACE` | 并行写竞态 | ✖ FAIL（1 / 84 / 3 / 4,281 / 8.1s） | ✔ **PASS**（0 / **100** / 2,041 / 10.3s） | 冲突:1，修复轮:0 | **仅 Boost 通过** |
-| `LIVE-SEMVER-REGRESSION` | 回归陷阱调试 | ✔ PASS（0 / 100 / 1 / 2,312 / 12.5s） | ✔ PASS（0 / 100 / 4,452 / 18.4s） | 冲突:1，tier:hard，召回:1 | 双过 |
-| `LIVE-REST-SYNTH` | 无验证合成 | ✔ PASS（0 / 99 / 1 / 417 / 3.5s） | ✔ **PASS**（0 / 99 / 4,094 / 17.6s） | 冲突:1，**合成:1（11 断言）**，召回:2 | 双过 |
-| `LIVE-TOKENIZER-BOUNDARY` | 深层算法边界 | ✔ PASS（0 / 100 / 1 / 1,088 / 6.5s） | ✔ PASS（0 / 100 / 2,218 / 11.7s） | 冲突:1，召回:2 | 双过 |
-| `LIVE-RATELIMIT-RACE` | 深层算法边界 | ✔ PASS（0 / 100 / 1 / 922 / 5.3s） | ✔ PASS（0 / 100 / 2,324 / 12.4s） | 冲突:1，召回:2 | 双过 |
+| `LIVE-EXPRESS-RACE` | 并行写竞态 | ✖ FAIL（1 / 84 / 3 / 4,142 / 4.9s） | ✔ **PASS**（0 / **100** / 3,231 / 22.5s） | 冲突:1，修复轮:0 | **仅 Boost 通过** |
+| `LIVE-SEMVER-REGRESSION` | 回归陷阱调试 | ✔ PASS（0 / 100 / 1 / 2,224 / 9.3s） | ✔ PASS（0 / 100 / 3,705 / 15.5s） | 冲突:1，修复轮:0 | 双过 |
+| `LIVE-REST-SYNTH` | 无验证合成 | ✔ PASS（0 / 100 / 1 / 383 / 3.6s） | ✔ **PASS**（0 / 100 / 4,507 / 19.7s） | 冲突:1，**合成:1（11 断言）** | 双过 |
+| `LIVE-TOKENIZER-BOUNDARY` | 深层算法边界 | ✔ PASS（0 / 100 / 1 / 1,120 / 5.2s） | ✔ PASS（0 / 100 / 2,779 / 17.5s） | 冲突:1，修复轮:0 | 双过 |
+| `LIVE-RATELIMIT-RACE` | 深层算法边界 | ✔ PASS（0 / 100 / 1 / 1,184 / 9.2s） | ✔ PASS（0 / 100 / 2,060 / 9.9s） | 冲突:1，修复轮:0 | 双过 |
+| `LIVE-DIFF-PATCH-APPLY` | 深层算法边界 | ✔ PASS（0 / 98 / 1 / 1,471 / 14.3s） | ✔ PASS（0 / 100 / 3,302 / 22.3s） | 冲突:1，修复轮:0 | 双过 |
+| `LIVE-ASYNC-BATCH-POOL` | 异步并发不变量 | ✔ PASS（0 / 100 / 1 / 1,132 / 5.7s） | ✔ PASS（0 / 100 / 1,729 / 15.4s） | 修复轮:0 | 双过 |
+| `LIVE-REDUX-STRUCTURAL-SHARING` | 架构不可变性 | ✔ PASS（0 / 100 / 1 / 887 / 5.5s） | ✔ PASS（0 / 99 / 3,394 / 22.6s） | 冲突:1，修复轮:0 | 双过 |
+| `LIVE-GRAPH-CYCLE-DEADLOCK` | 深层算法边界 | ✔ PASS（0 / 100 / 1 / 992 / 6.9s） | ✔ PASS（0 / 100 / 3,008 / 22.3s） | 修复轮:0 | 双过 |
+| `LIVE-CACHE-STAMPEDE-MUTEX` | 高并发不变量 | ✔ PASS（0 / 100 / 1 / 1,426 / 13.8s） | ✔ PASS（0 / 97 / 2,115 / 17.1s） | 修复轮:0 | 双过 |
 
 ---
 

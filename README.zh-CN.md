@@ -81,15 +81,15 @@
 
 ## 权威基准评测：单一模型 vs 模型 + 技能工具（Solo mimo-v2.6-flash vs mimo-v2.6-flash + agent-boost，实盘 API）
 
-取材 **BugsJS (ICSE/MSR)**、**SWE-bench / SWE-bench Verified (ICLR 2024)**、**HumanEval-X (TKDE 2023)** 的五项可执行工程任务，对 OpenCode Zen 网关（`https://opencode.ai/zen/go/v1/chat/completions`，模型 `mimo-v2.6-flash`）发起真实双轨对决：37 次真实 HTTP 调用，每个 Token 由网关自身 `usage` 计量，每个退出码来自隔离 Git 工作区里真实的 `node --test`。`npm run benchmark:live` 一键复现（mimo 牌价约 $0.005；完整报告见 [`BENCHMARKS.zh-CN.md`](BENCHMARKS.zh-CN.md)）。
+取材 **BugsJS (ICSE/MSR)**、**SWE-bench / SWE-bench Verified (ICLR 2024)**、**HumanEval-X (TKDE 2023)** 的十项可执行工程任务，对 OpenCode Zen 网关（`https://opencode.ai/zen/go/v1/chat/completions`，模型 `mimo-v2.6-flash`）发起真实双轨对决：65 次真实 HTTP 调用，每个 Token 由网关自身 `usage` 计量，每个退出码来自隔离 Git 工作区里真实的 `node --test`。`npm run benchmark` 一键复现（mimo 牌价约 $0.01；完整报告见 [`BENCHMARKS.zh-CN.md`](BENCHMARKS.zh-CN.md)）。
 
 | 评测维度 | Solo mimo-v2.6-flash（无工具） | mimo-v2.6-flash + agent-boost (v0.4.0) |
 | :--- | :--- | :--- |
-| **任务通过率（实盘）** | 4/5 (80.0%) | **5/5 (100.0%)**——决定性胜在并行写竞态任务 |
-| **六维裁判平均分** | 96.6 / 100 | **99.8 / 100（+3.2 分）**（`calculateYardstickScore`） |
-| **并行写冲突拦截** | 0——并发子代理互相覆盖 `src/server.js`，连败三轮 | **5/5 任务动手前被门禁拦截**（`detectTargetFileConflicts`） |
+| **任务通过率（实盘）** | 9/10 (90.0%) | **10/10 (100.0%)**——决定性胜在并行写竞态任务 |
+| **六维裁判平均分** | 98.2 / 100 | **99.6 / 100（+1.4 分）**（`calculateYardstickScore`） |
+| **并行写冲突拦截** | 0——并发子代理互相覆盖 `src/server.js`，连败三轮 | **7/10 任务动手前被门禁拦截**（`detectTargetFileConflicts`） |
 | **无测试命令时的测试合成** | 0——交付不可执行的完成宣称 | **1/1——11 条语法校验过的断言先行全绿**（`verify_synth.sh` 路径） |
-| **计量 Token（网关 usage）** | **9,020** | 15,129——1.677x（输入更少、推理型输出 3.79x） |
+| **计量 Token（网关 usage）** | **14,961** | 29,830——1.994x（输入更少、推理型输出 4.46x） |
 | **Git 回滚次数** | 不适用 | 0（未发生基线回归；LATS 机制真实在线） |
 
 > 📊 **完整实盘报告**：含逐任务计量 Token 与延迟记分牌、线上任务实录、harness 完整性协议与强 Solo 基线的诚实分析——[**`BENCHMARKS.zh-CN.md`**](BENCHMARKS.zh-CN.md)（英文版：[**`BENCHMARKS.md`**](BENCHMARKS.md)）。

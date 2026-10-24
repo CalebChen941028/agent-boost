@@ -6,7 +6,7 @@
 
 [English](BENCHMARKS.md) | [简体中文](BENCHMARKS.zh-CN.md)
 
-This report answers one question with metered live traffic: with the same model as the brain, what changes when the engineering toolchain around it is added or removed? Five executable engineering tasks — drawn from the failure archetypes of **BugsJS**, **SWE-bench / SWE-bench Verified**, and **HumanEval-X** — ran as a real dual-track duel:
+This report answers one question with metered live traffic: with the same model as the brain, what changes when the engineering toolchain around it is added or removed? Ten executable engineering tasks — drawn from the failure archetypes of **BugsJS**, **SWE-bench / SWE-bench Verified**, and **HumanEval-X** — ran as a real dual-track duel:
 
 - **Solo mimo-v2.6-flash (control)**: one model, bare prompts, no tools. No file-conflict gate, no Git rollback, no reproduction-test synthesis, no lifelong memory, no independent judge.
 - **mimo-v2.6-flash + agent-boost (treatment)**: the same brain driving the v0.4.0 five-phase state machine — `evaluateTaskComplexity` compute tiers, `matchExperienceCues` recall, `detectTargetFileConflicts` ownership gating, per-workstream execution, LATS Git checkpoints with real `git reset --hard` rollback, `verify_synth.sh` test synthesis, and `calculateYardstickScore` six-criterion judging.
@@ -19,10 +19,10 @@ The harness is [`scripts/run-live-benchmarks.mjs`](scripts/run-live-benchmarks.m
 | :--- | :--- |
 | Endpoint | `https://opencode.ai/zen/go/v1/chat/completions` (OpenCode Zen gateway, OpenAI-compatible) |
 | Model | `mimo-v2.6-flash`, temperature 0.2, both arms |
-| Session | `agent-boost-live-9e238236`, started 2026-10-24T12:41:53Z, Node v22.23.1 |
-| Live HTTP calls | 37 placed, 37 succeeded, 0 failed/retried (26 arm calls + 10 judge calls + 1 preflight) |
-| Metered tokens | 24,149 across the 26 arm calls (gateway `usage` accounting; judges/preflight excluded, full ledger in the JSON dump) |
-| Estimated cost | ≈ $0.005 at list price for arm traffic ($0.14/M input, $0.28/M output) |
+| Session | `agent-boost-live-a8c21e96`, started 2026-10-24T14:28:53Z, Node v22.23.1 |
+| Live HTTP calls | 65 placed, 65 succeeded, 0 failed/retried (full audit ledger in the JSON dump) |
+| Metered tokens | 44,791 across the arm calls (14,961 solo + 29,830 boost, gateway `usage` accounting) |
+| Estimated cost | ≈ $0.01 at list price for arm traffic ($0.14/M input, $0.28/M output) |
 
 ---
 
@@ -33,41 +33,46 @@ The harness is [`scripts/run-live-benchmarks.mjs`](scripts/run-live-benchmarks.m
 > 2. **Fairness protocol.** Identical task briefs, identical fixture repositories, identical immutable test suites, identical judge prompt. Solo may retry up to 3 attempts with raw failing-output feedback; boost repair budgets come from `evaluateTaskComplexity` (simple 2 / standard 3 / hard 5) — the compute-tier allocation itself is part of the treatment. The fixture test suite is a frozen specification for both arms: workstream plans that declare test-file ownership are stripped, and the suite is restored before every test run, so neither arm can ever grade itself against a rewritten suite.
 > 3. **Ground truth.** Tasks with a fixture suite are scored by it directly. The no-verify-command task (`LIVE-REST-SYNTH`) is scored by a hidden post-hoc test appended to both workspaces only after both arms declare completion — the solo arm's claim "done, no test command configured" is never contradicted during its run, which is exactly the scenario under test.
 > 4. **The judge.** Both arms are scored by the same agent-as-a-judge call (independent review of the delivered diff plus final test outcome). Findings feed `calculateYardstickScore`; the pass gate is ≥ 85 with zero high-severity findings. In this run every judge verdict parsed from the model (no deterministic fallback fired).
-> 5. **What this run does not show.** Rollback counters. Zero `git reset --hard` fired because no repair round in the final protocol regressed a baseline-passing test — the model's fixes were clean on all five tasks. The rollback mechanism itself is real (executed and evidenced in the protocol-calibration runs; see Section 6) but was not needed here. That is the honest reading: on these five tasks the treatment's wins came from coordination and verification, not from repair heroics.
+> 5. **What this run does not show.** Rollback counters. Zero `git reset --hard` fired because no repair round in the final protocol regressed a baseline-passing test — the model's fixes were clean on all ten tasks. The rollback mechanism itself is real (executed and evidenced in the protocol-calibration runs; see Section 6) but was not needed here. That is the honest reading: on these ten tasks the treatment's wins came from coordination and verification, not from repair heroics.
 
 ---
 
 ## 2. Live Comparison Matrix
 
-The runner prints this aggregate itself. Every value below is greppable in `npm run benchmark:live` stdout (right column names the line).
+The runner prints this aggregate itself. Every value below is greppable in `npm run benchmark` stdout (right column names the line).
 
 | Evaluation metric | Solo mimo-v2.6-flash (no tools) | mimo-v2.6-flash + agent-boost (v0.4.0) | Traceable to (stdout line) |
 | :--- | :--- | :--- | :--- |
-| **Task pass rate** | **4/5 (80.0%)** | **5/5 (100.0%)** | `Solo mimo-v2.6-flash pass rate: 4/5 (80.0%)`, `mimo-v2.6-flash + agent-boost pass rate: 5/5 (100.0%)` |
-| **Mean yardstick score (judge)** | 96.6 / 100 | **99.8 / 100 (+3.2 pts)** | `Mean yardstick score (judge): solo 96.6/100 -> boost 99.8/100` |
-| **Metered input tokens** | 6,463 | 5,447 — 0.84x | `Metered API tokens` lines |
-| **Metered output tokens** | 2,557 | **9,682 — 3.79x** | `Metered API tokens` lines |
-| **Metered tokens (total)** | **9,020** | 15,129 — 1.677x | `Token ratio (boost/solo): 1.677x` |
-| **Mean per-call API latency** | **7,160 ms** | 14,086 ms | `Mean per-call API latency: solo 7160ms -> boost 14086ms` |
-| **Parallel write conflicts intercepted** | 0 — both subagents write `src/server.js`, last write wins | **5/5 tasks gated before any edit** | `Parallel write conflicts intercepted (boost): 5` |
+| **Task pass rate** | **9/10 (90.0%)** | **10/10 (100.0%)** | `Solo mimo-v2.6-flash pass rate: 9/10 (90.0%)`, `mimo-v2.6-flash + agent-boost pass rate: 10/10 (100.0%)` |
+| **Mean yardstick score (judge)** | 98.2 / 100 | **99.6 / 100 (+1.4 pts)** | `Mean yardstick score (judge): solo 98.2/100 -> boost 99.6/100` |
+| **Metered input tokens** | 10,440 | 9,672 — 0.926x | `Metered API tokens` lines |
+| **Metered output tokens** | 4,521 | **20,158 — 4.459x** | `Metered API tokens` lines |
+| **Metered tokens (total)** | **14,961** | 29,830 — 1.994x | `Token ratio (boost/solo): 1.994x` |
+| **Mean per-call API latency** | **7,834 ms** | 18,472 ms | `Mean per-call API latency: solo 7834ms -> boost 18472ms` |
+| **Parallel write conflicts intercepted** | 0 — subagents write `src/server.js`, last write wins | **7/10 tasks gated before any edit** | `Parallel write conflicts intercepted (boost): 7` |
 | **Test synthesis coverage** | 0 — ships an unverified completion claim | **1/1 (11 assertions, syntax-validated)** | `Test synthesis coverage (boost): 1/1` |
 | **Git rollbacks needed** | n/a | **0 (no baseline regression occurred)** | `Git reset --hard rollbacks executed (boost): 0` |
 
-Two honest readings of the token rows. The boost arm spends fewer input tokens (shorter per-call contexts: scoped workstream prompts instead of whole-repository dumps) but 3.8x more output tokens — that is the metered price of mimo's reasoning budget across planning, replanning, execution, and judging turns. The toolchain buys coordination and verification guarantees at 1.677x total metered cost and roughly 2x wall time on this suite.
+Two honest readings of the token rows. The boost arm spends fewer input tokens (shorter per-call contexts: scoped workstream prompts instead of whole-repository dumps) but 4.46x more output tokens — that is the metered price of mimo's reasoning budget across planning, replanning, execution, and judging turns. The toolchain buys coordination and verification guarantees at 1.994x total metered cost and roughly 2.3x wall time on this suite.
 
 ---
 
-## 3. The Five-Task Live Scoreboard
+## 3. The Ten-Task Live Scoreboard
 
-Transcribed from the `LIVE SCOREBOARD MATRIX` block of the same run. `Lat` is mean per-call API latency; tokens are metered gateway usage for the arm's own generation/planning/repair traffic (judge calls metered separately in the JSON ledger).
+Transcribed from the `LIVE SCOREBOARD MATRIX` block of session `agent-boost-live-a8c21e96`. `Lat` is mean per-call API latency; tokens are metered gateway usage for the arm's own generation/planning/repair traffic.
 
 | Task | Category | Solo (exit / score / attempts / tokens / lat) | Boost (exit / score / tokens / lat) | Boost evidence | Result |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `LIVE-EXPRESS-RACE` | Parallel Write Race | ✖ FAIL (1 / 84 / 3 / 4,281 / 8.1s) | ✔ **PASS** (0 / **100** / 2,041 / 10.3s) | conflict:1, rounds:0 | **BOOST-ONLY** |
-| `LIVE-SEMVER-REGRESSION` | Regression-Prone Debugging | ✔ PASS (0 / 100 / 1 / 2,312 / 12.5s) | ✔ PASS (0 / 100 / 4,452 / 18.4s) | conflict:1, tier:hard, cues:1 | BOTH-PASS |
-| `LIVE-REST-SYNTH` | Unverified Synthesis | ✔ PASS (0 / 99 / 1 / 417 / 3.5s) | ✔ **PASS** (0 / 99 / 4,094 / 17.6s) | conflict:1, **synth:1 (11 assertions)**, cues:2 | BOTH-PASS |
-| `LIVE-TOKENIZER-BOUNDARY` | Deep Algorithmic Boundary | ✔ PASS (0 / 100 / 1 / 1,088 / 6.5s) | ✔ PASS (0 / 100 / 2,218 / 11.7s) | conflict:1, cues:2 | BOTH-PASS |
-| `LIVE-RATELIMIT-RACE` | Deep Algorithmic Boundary | ✔ PASS (0 / 100 / 1 / 922 / 5.3s) | ✔ PASS (0 / 100 / 2,324 / 12.4s) | conflict:1, cues:2 | BOTH-PASS |
+| `LIVE-EXPRESS-RACE` | Parallel Write Race | ✖ FAIL (1 / 84 / 3 / 4,142 / 4.9s) | ✔ **PASS** (0 / **100** / 3,231 / 22.5s) | conflict:1, rounds:0 | **BOOST-ONLY** |
+| `LIVE-SEMVER-REGRESSION` | Regression-Prone Debugging | ✔ PASS (0 / 100 / 1 / 2,224 / 9.3s) | ✔ PASS (0 / 100 / 3,705 / 15.5s) | conflict:1, rounds:0 | BOTH-PASS |
+| `LIVE-REST-SYNTH` | Unverified Synthesis | ✔ PASS (0 / 100 / 1 / 383 / 3.6s) | ✔ **PASS** (0 / 100 / 4,507 / 19.7s) | conflict:1, **synth:1 (11 assertions)** | BOTH-PASS |
+| `LIVE-TOKENIZER-BOUNDARY` | Deep Algorithmic Boundary | ✔ PASS (0 / 100 / 1 / 1,120 / 5.2s) | ✔ PASS (0 / 100 / 2,779 / 17.5s) | conflict:1, rounds:0 | BOTH-PASS |
+| `LIVE-RATELIMIT-RACE` | Deep Algorithmic Boundary | ✔ PASS (0 / 100 / 1 / 1,184 / 9.2s) | ✔ PASS (0 / 100 / 2,060 / 9.9s) | conflict:1, rounds:0 | BOTH-PASS |
+| `LIVE-DIFF-PATCH-APPLY` | Deep Algorithmic Boundary | ✔ PASS (0 / 98 / 1 / 1,471 / 14.3s) | ✔ PASS (0 / 100 / 3,302 / 22.3s) | conflict:1, rounds:0 | BOTH-PASS |
+| `LIVE-ASYNC-BATCH-POOL` | Concurrency & Async Invariant | ✔ PASS (0 / 100 / 1 / 1,132 / 5.7s) | ✔ PASS (0 / 100 / 1,729 / 15.4s) | rounds:0 | BOTH-PASS |
+| `LIVE-REDUX-STRUCTURAL-SHARING` | State Architecture & Invariant | ✔ PASS (0 / 100 / 1 / 887 / 5.5s) | ✔ PASS (0 / 99 / 3,394 / 22.6s) | conflict:1, rounds:0 | BOTH-PASS |
+| `LIVE-GRAPH-CYCLE-DEADLOCK` | Deep Algorithmic Boundary | ✔ PASS (0 / 100 / 1 / 992 / 6.9s) | ✔ PASS (0 / 100 / 3,008 / 22.3s) | rounds:0 | BOTH-PASS |
+| `LIVE-CACHE-STAMPEDE-MUTEX` | High Concurrency Invariant | ✔ PASS (0 / 100 / 1 / 1,426 / 13.8s) | ✔ PASS (0 / 97 / 2,115 / 17.1s) | rounds:0 | BOTH-PASS |
 
 ---
 

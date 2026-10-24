@@ -81,15 +81,15 @@ Universal multi-agent deep reasoning protocol and workflow engine compatible wit
 
 ## Empirical Benchmarks: Solo mimo-v2.6-flash vs mimo-v2.6-flash + agent-boost (Live API)
 
-Five executable engineering tasks drawn from **BugsJS (ICSE/MSR)**, **SWE-bench / SWE-bench Verified (ICLR 2024)**, and **HumanEval-X (TKDE 2023)** ran as a real dual-track duel against the live OpenCode Zen gateway (`https://opencode.ai/zen/go/v1/chat/completions`, model `mimo-v2.6-flash`): 37 real HTTP calls, every token metered by the gateway's own `usage` accounting, every exit code from a real `node --test` run in an isolated Git workspace. Reproduce with `npm run benchmark:live` (≈ $0.005 at list price; full report in [`BENCHMARKS.md`](BENCHMARKS.md)).
+Ten executable engineering tasks drawn from **BugsJS (ICSE/MSR)**, **SWE-bench / SWE-bench Verified (ICLR 2024)**, and **HumanEval-X (TKDE 2023)** ran as a real dual-track duel against the live OpenCode Zen gateway (`https://opencode.ai/zen/go/v1/chat/completions`, model `mimo-v2.6-flash`): 65 real HTTP calls, every token metered by the gateway's own `usage` accounting, every exit code from a real `node --test` run in an isolated Git workspace. Reproduce with `npm run benchmark` (≈ $0.01 at list price; full report in [`BENCHMARKS.md`](BENCHMARKS.md)).
 
 | Benchmark Metric | Solo mimo-v2.6-flash (No Tools) | mimo-v2.6-flash + agent-boost (v0.4.0) |
 | :--- | :--- | :--- |
-| **Task Pass Rate (live)** | 4/5 (80.0%) | **5/5 (100.0%)** — decisive win on the parallel-write race |
-| **Mean Yardstick Score (judge)** | 96.6 / 100 | **99.8 / 100 (+3.2 pts)** (`calculateYardstickScore`) |
-| **Parallel Write Conflict Interception** | 0 — concurrent subagents clobber `src/server.js`, 3 failed rounds | **5/5 gated before any edit** (`detectTargetFileConflicts`) |
+| **Task Pass Rate (live)** | 9/10 (90.0%) | **10/10 (100.0%)** — decisive win on the parallel-write race |
+| **Mean Yardstick Score (judge)** | 98.2 / 100 | **99.6 / 100 (+1.4 pts)** (`calculateYardstickScore`) |
+| **Parallel Write Conflict Interception** | 0 — concurrent subagents clobber `src/server.js`, 3 failed rounds | **7/10 gated before any edit** (`detectTargetFileConflicts`) |
 | **Test Synthesis (no verify command)** | 0 — ships an unverified completion claim | **1/1 — 11 syntax-validated assertions green before delivery** (`verify_synth.sh` path) |
-| **Metered Tokens (gateway usage)** | **9,020** | 15,129 — 1.677x (fewer inputs, 3.79x reasoning-heavy outputs) |
+| **Metered Tokens (gateway usage)** | **14,961** | 29,830 — 1.994x (fewer inputs, 4.46x reasoning-heavy outputs) |
 | **Git Rollbacks Needed** | n/a | 0 (no baseline regression occurred; LATS machinery live) |
 
 > 📊 **Full Live Report**: per-task scoreboard with metered tokens and latencies, task narratives over the wire, the harness integrity protocol, and the honest strong-solo analysis — [**`BENCHMARKS.md`**](BENCHMARKS.md) (中文版：[**`BENCHMARKS.zh-CN.md`**](BENCHMARKS.zh-CN.md)).

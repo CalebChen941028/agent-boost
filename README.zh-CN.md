@@ -94,7 +94,7 @@
 
 > 📊 **完整实盘报告**：含逐任务计量 Token 与延迟记分牌、线上任务实录、harness 完整性协议与强 Solo 基线的诚实分析——[**`BENCHMARKS.zh-CN.md`**](BENCHMARKS.zh-CN.md)（英文版：[**`BENCHMARKS.md`**](BENCHMARKS.md)）。
 >
-> 🧪 **一键复现**：`npm run benchmark`（或 `npm run benchmark:live`）用你自己的账号跑实盘对决（`OPENCODE_API_KEY`）；`npm run benchmark:selftest` 零 API 花销验证全部 21 项 harness 机制。
+> 🧪 **一键复现**：`npm run benchmark`（或 `npm run benchmark:live`）用你自己的账号跑实盘对决（`OPENCODE_API_KEY`）；`npm run benchmark:selftest` 零 API 花销验证全部 36 项 harness 机制；`npm run benchmark:report` 一键生成交互式 HTML 可视化报告。
 
 ---
 

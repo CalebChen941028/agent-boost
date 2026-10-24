@@ -11,7 +11,7 @@ This report answers one question with metered live traffic: with the same model 
 - **Solo mimo-v2.6-flash (control)**: one model, bare prompts, no tools. No file-conflict gate, no Git rollback, no reproduction-test synthesis, no lifelong memory, no independent judge.
 - **mimo-v2.6-flash + agent-boost (treatment)**: the same brain driving the v0.4.0 five-phase state machine — `evaluateTaskComplexity` compute tiers, `matchExperienceCues` recall, `detectTargetFileConflicts` ownership gating, per-workstream execution, LATS Git checkpoints with real `git reset --hard` rollback, `verify_synth.sh` test synthesis, and `calculateYardstickScore` six-criterion judging.
 
-The harness is [`scripts/run-live-benchmarks.mjs`](scripts/run-live-benchmarks.mjs). Run `npm run benchmark` (or `npm run benchmark:live`) and the same machinery places real HTTP calls from your own account. Offline, run `npm run benchmark:selftest` to verify all 21 harness mechanisms with zero API spend.
+The harness is [`scripts/run-live-benchmarks.mjs`](scripts/run-live-benchmarks.mjs). Run `npm run benchmark` (or `npm run benchmark:live`) and the same machinery places real HTTP calls from your own account. Offline, run `npm run benchmark:selftest` to verify all 36 harness mechanisms with zero API spend. Generate interactive visual HTML reports via `npm run benchmark:report`.
 
 ### Run facts
 
@@ -133,11 +133,12 @@ The calibration runs also exercised the rollback path for real (`git reset --har
 
 ```bash
 export OPENCODE_API_KEY=oc_sk_...   # opencode.ai console key (Go plan); also read from ./.env or ~/.env
-npm run benchmark                   # full 5-task duel, ~10–15 min, ≈ $0.005 at mimo list price
-npm run benchmark:selftest          # zero API spend offline verification of all 21 harness mechanisms
+npm run benchmark                   # full live duel across 10 canonical tasks, auto-generates report.html
+npm run benchmark:selftest          # zero API spend offline verification of all 36 harness mechanisms
+npm run benchmark:report            # generate interactive HTML report from latest run results
 ```
 
-The runner prints every request's outcome, token metering, and test scoreboard; append `--json out.json` for the structured ledger (every HTTP call with latency, status, and usage). Harness machinery can be verified with zero API spend: `npm run benchmark:selftest` (21 checks: every fixture fails on its seeded bug, canonical fixes go green, Git reset/reflog round-trip, verify-gate invariants).
+The runner prints every request's outcome, token metering, and test scoreboard; append `--json out.json` for the structured ledger (every HTTP call with latency, status, and usage) and `--html out.html` for an Apple-inspired responsive dashboard. Harness machinery can be verified with zero API spend: `npm run benchmark:selftest` (36 checks across 10 tasks: every fixture fails on its seeded bug, canonical fixes go green, Git reset/reflog round-trip, verify-gate invariants). View interactive results in ZCode panel via [`adapters/zcode/report-preview.html`](adapters/zcode/report-preview.html).
 
 ### The task prompts, adapted for mimo-v2.6-flash
 

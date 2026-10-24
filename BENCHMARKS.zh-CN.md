@@ -11,7 +11,7 @@
 - **Solo mimo-v2.6-flash（对照组）**：单一模型，裸提示词，零工具。没有文件冲突门禁、没有 Git 回滚、没有复现测试合成、没有终身记忆、没有独立裁判。
 - **mimo-v2.6-flash + agent-boost（实验组）**：同一个大脑，驱动 v0.4.0 五阶段状态机——`evaluateTaskComplexity` 算力分层、`matchExperienceCues` 经验召回、`detectTargetFileConflicts` 文件所有权门禁、按工作流执行、LATS Git 检查点与真实 `git reset --hard` 回滚、`verify_synth.sh` 测试合成、`calculateYardstickScore` 六维量化裁判。
 
-测试载体是 [`scripts/run-live-benchmarks.mjs`](scripts/run-live-benchmarks.mjs)。运行 `npm run benchmark`（或 `npm run benchmark:live`），同一套机制就会用你自己的账号发起真实 HTTP 调用。离线环境下可运行 `npm run benchmark:selftest` 验证全部 21 项 Harness 机制。
+测试载体是 [`scripts/run-live-benchmarks.mjs`](scripts/run-live-benchmarks.mjs)。运行 `npm run benchmark`（或 `npm run benchmark:live`），同一套机制就会用你自己的账号发起真实 HTTP 调用。离线环境下可运行 `npm run benchmark:selftest` 验证全部 36 项 Harness 机制。运行 `npm run benchmark:report` 可一键生成交互式可视化 HTML 报告。
 
 ### 本次运行事实
 
@@ -133,11 +133,12 @@ v3→v4 客户载荷转换器；仓库声明无验证命令（`verifyCommand: nu
 
 ```bash
 export OPENCODE_API_KEY=oc_sk_...   # opencode.ai 控制台密钥（Go 套餐）；也支持 ./.env 或 ~/.env
-npm run benchmark                   # 完整五任务对决，约 10–15 分钟，mimo 牌价约 $0.005
-npm run benchmark:selftest          # 零 API 花销离线验证全部 21 项 harness 机制
+npm run benchmark                   # 完整实盘对决（10 项标准任务），自动生成交互式 report.html
+npm run benchmark:selftest          # 零 API 花销离线验证全部 36 项 harness 机制
+npm run benchmark:report            # 从最新测试台账一键生成精美 HTML 可视化报告
 ```
 
-运行器打印每次请求的结果、Token 计量与测试记分牌；追加 `--json out.json` 可得结构化台账（每次 HTTP 调用的延迟、状态与 usage）。零 API 花销即可验证 harness 机制：`npm run benchmark:selftest`（21 项检查：每个夹具在种子 bug 上必失败、canonical 修复必全绿、Git reset/reflog 回路、verify-gate 不变量）。
+运行器打印每次请求的结果、Token 计量与测试记分牌；追加 `--json out.json` 可得结构化台账（每次 HTTP 调用的延迟、状态与 usage），追加 `--html out.html` 输出 Apple 现代设计规范的独立离线可视化报告。零 API 花销即可验证 harness 机制：`npm run benchmark:selftest`（36 项检查覆盖 10 个标准任务：每个夹具在种子 bug 上必失败、canonical 修复必全绿、Git reset/reflog 回路、verify-gate 不变量）。在 ZCode 中可通过 [`adapters/zcode/report-preview.html`](adapters/zcode/report-preview.html) 面板直接预览可视化报告。
 
 ### 任务提示词（已适配 mimo-v2.6-flash）
 

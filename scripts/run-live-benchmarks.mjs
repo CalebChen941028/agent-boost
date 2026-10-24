@@ -64,6 +64,7 @@ import {
   evaluateTaskComplexity,
   formatExperienceEntry,
 } from "../shared/verify-gate.js";
+import { generateHtmlReport } from "./generate-benchmark-report.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -1606,6 +1607,431 @@ export const LIVE_TASKS = [
       });
     },
   },
+  {
+    id: "LIVE-DIFF-PATCH-APPLY",
+    name: "Unified Diff Multi-Hunk Line Drift Patch Applicator",
+    origin: "Git archetype / patch utility (live)",
+    category: "Deep Algorithmic Boundary",
+    scenario: "boundary",
+    experienceKeywords: "unified diff multi hunk line offset drift chunk application",
+    experienceDimension: "DOM",
+    sourceFiles: ["src/patch.js"],
+    testFiles: ["test/patch.test.mjs"],
+    fixtureHasTests: true,
+    expectedBaselineFails: 0,
+    soloSeesTests: true,
+    brief:
+      "Fix the unified diff patch applicator in src/patch.js (applyUnifiedDiff(originalText, diffText)).\n\n" +
+      "Bug: When applying a diff containing multiple hunks (@@ -start,len +start,len @@), earlier hunks that insert " +
+      "or delete lines shift line indices in the target document. The current implementation applies subsequent hunks " +
+      "using the raw oldStart index from the hunk header without tracking accumulated line offset drift. This causes " +
+      "subsequent hunks to replace the wrong lines on multi-hunk diffs.\n\n" +
+      "Required: Track running line offset drift (accumulated delta from applied hunks) and adjust target hunk application lines accordingly.\n\n" +
+      "Constraints — existing behaviors must keep working:\n" +
+      "  - Empty diffs or whitespace-only diffs must return original text unchanged.\n" +
+      "  - Single-hunk modifications must continue to work cleanly.",
+    fixture(ws) {
+      writeWorkspaceFiles(ws, {
+        "package.json": PKG_JSON,
+        "src/patch.js":
+          "export function applyUnifiedDiff(originalText, diffText) {\n" +
+          "  if (!diffText || !diffText.trim()) return originalText;\n" +
+          '  const lines = originalText.split("\\n");\n' +
+          '  const diffLines = diffText.split("\\n");\n' +
+          "  const hunkRegex = /^@@ -(\\d+)(?:,(\\d+))? \\+(\\d+)(?:,(\\d+))? @@/;\n" +
+          "  let i = 0;\n" +
+          "  while (i < diffLines.length) {\n" +
+          "    const match = diffLines[i].match(hunkRegex);\n" +
+          "    if (!match) { i++; continue; }\n" +
+          "    const oldStart = parseInt(match[1], 10);\n" +
+          "    i++;\n" +
+          "    const hunkOps = [];\n" +
+          '    while (i < diffLines.length && !diffLines[i].startsWith("@@")) {\n' +
+          "      const line = diffLines[i];\n" +
+          '      if (line.startsWith("+") || line.startsWith("-") || line.startsWith(" ")) {\n' +
+          "        hunkOps.push(line);\n" +
+          "      }\n" +
+          "      i++;\n" +
+          "    }\n" +
+          "    // BUG: uses oldStart directly without accumulating running line offset\n" +
+          "    const targetIndex = oldStart - 1;\n" +
+          "    const newLines = [];\n" +
+          "    let oldLinesCount = 0;\n" +
+          "    for (const op of hunkOps) {\n" +
+          '      if (op.startsWith("+")) {\n' +
+          "        newLines.push(op.slice(1));\n" +
+          '      } else if (op.startsWith("-")) {\n' +
+          "        oldLinesCount++;\n" +
+          '      } else if (op.startsWith(" ")) {\n' +
+          "        oldLinesCount++;\n" +
+          "        newLines.push(op.slice(1));\n" +
+          "      }\n" +
+          "    }\n" +
+          "    lines.splice(targetIndex, oldLinesCount, ...newLines);\n" +
+          "  }\n" +
+          '  return lines.join("\\n");\n' +
+          "}\n",
+        "test/patch.test.mjs":
+          'import test from "node:test";\n' +
+          'import assert from "node:assert/strict";\n' +
+          'import { applyUnifiedDiff } from "../src/patch.js";\n\n' +
+          'test("empty diff returns original text unchanged", () => {\n' +
+          '  const orig = "line 1\\nline 2\\nline 3";\n' +
+          '  assert.equal(applyUnifiedDiff(orig, ""), orig);\n' +
+          '  assert.equal(applyUnifiedDiff(orig, "   "), orig);\n' +
+          '});\n\n' +
+          'test("single-hunk diff modification works", () => {\n' +
+          '  const orig = "line 1\\nline 2\\nline 3";\n' +
+          '  const diff = "@@ -2,1 +2,1 @@\\n-line 2\\n+line two";\n' +
+          '  assert.equal(applyUnifiedDiff(orig, diff), "line 1\\nline two\\nline 3");\n' +
+          '});\n\n' +
+          'test("multi-hunk diff with line insertions shifts subsequent hunks correctly", () => {\n' +
+          '  const orig = "line 1\\nline 2\\nline 3\\nline 4\\nline 5";\n' +
+          '  const diff =\n' +
+          '    "@@ -2,1 +2,3 @@\\n line 2\\n+extra A\\n+extra B\\n" +\n' +
+          '    "@@ -4,1 +6,1 @@\\n-line 4\\n+line four modified";\n' +
+          '  const expected = "line 1\\nline 2\\nextra A\\nextra B\\nline 3\\nline four modified\\nline 5";\n' +
+          '  assert.equal(applyUnifiedDiff(orig, diff), expected);\n' +
+          '});\n',
+      });
+    },
+  },
+  {
+    id: "LIVE-ASYNC-BATCH-POOL",
+    name: "Async Worker Pool Concurrency Cap and Fail-Fast Abort",
+    origin: "Node.js archetype / p-limit async pool (live)",
+    category: "Concurrency & Async Invariant",
+    scenario: "boundary",
+    experienceKeywords: "async worker pool concurrency limit fail fast unhandled rejection abort",
+    experienceDimension: "DOM",
+    sourceFiles: ["src/pool.js"],
+    testFiles: ["test/pool.test.mjs"],
+    fixtureHasTests: true,
+    expectedBaselineFails: 0,
+    soloSeesTests: true,
+    brief:
+      "Fix the async batch pool in src/pool.js exporting asyncPool(items, iteratorFn, concurrency).\n\n" +
+      "Bug: When an iteratorFn rejects with an error, the pool continues scheduling tasks from the queue instead of " +
+      "aborting immediately. The pool must fail fast: as soon as any item fails, cancel scheduling new tasks, " +
+      "let active promises settle without throwing unhandled rejections, and reject the returned promise.\n\n" +
+      "Constraints:\n" +
+      "  - Maximum concurrent executions of iteratorFn must never exceed concurrency.\n" +
+      "  - Resolved results must preserve original item ordering.",
+    fixture(ws) {
+      writeWorkspaceFiles(ws, {
+        "package.json": PKG_JSON,
+        "src/pool.js":
+          "export async function asyncPool(items, iteratorFn, concurrency = 2) {\n" +
+          "  const results = new Array(items.length);\n" +
+          "  let index = 0;\n" +
+          "  async function worker() {\n" +
+          "    while (index < items.length) {\n" +
+          "      const i = index++;\n" +
+          "      // BUG: does not check abort flag; keeps pulling new items after error\n" +
+          "      results[i] = await iteratorFn(items[i], i);\n" +
+          "    }\n" +
+          "  }\n" +
+          "  const workers = [];\n" +
+          "  const count = Math.min(concurrency, items.length);\n" +
+          "  for (let w = 0; w < count; w++) workers.push(worker());\n" +
+          "  await Promise.all(workers);\n" +
+          "  return results;\n" +
+          "}\n",
+        "test/pool.test.mjs":
+          'import test from "node:test";\n' +
+          'import assert from "node:assert/strict";\n' +
+          'import { asyncPool } from "../src/pool.js";\n\n' +
+          'test("concurrency limit is strictly respected", async () => {\n' +
+          "  let active = 0;\n" +
+          "  let maxActive = 0;\n" +
+          "  const items = [1, 2, 3, 4, 5, 6];\n" +
+          "  const res = await asyncPool(items, async (item) => {\n" +
+          "    active++;\n" +
+          "    maxActive = Math.max(maxActive, active);\n" +
+          "    await new Promise((r) => setTimeout(r, 20));\n" +
+          "    active--;\n" +
+          "    return item * 2;\n" +
+          "  }, 2);\n" +
+          '  assert.equal(maxActive <= 2, true, `Max concurrency exceeded: ${maxActive}`);\n' +
+          "  assert.deepEqual(res, [2, 4, 6, 8, 10, 12]);\n" +
+          "});\n\n" +
+          'test("preserves results in original order", async () => {\n' +
+          "  const items = [80, 10, 40];\n" +
+          "  const res = await asyncPool(items, async (ms, idx) => {\n" +
+          "    await new Promise((r) => setTimeout(r, ms));\n" +
+          '    return `item-${idx}`;\n' +
+          "  }, 3);\n" +
+          '  assert.deepEqual(res, ["item-0", "item-1", "item-2"]);\n' +
+          "});\n\n" +
+          'test("fail-fast rejects immediately and cancels remaining tasks", async () => {\n' +
+          "  const executed = [];\n" +
+          "  let thrown = null;\n" +
+          "  try {\n" +
+          "    await asyncPool([1, 2, 3, 4, 5], async (item) => {\n" +
+          "      executed.push(item);\n" +
+          "      if (item === 1) {\n" +
+          "        await new Promise((r) => setTimeout(r, 60));\n" +
+          "        return item;\n" +
+          "      }\n" +
+          "      if (item === 2) {\n" +
+          "        await new Promise((r) => setTimeout(r, 10));\n" +
+          '        throw new Error("Task 2 failed");\n' +
+          "      }\n" +
+          "      await new Promise((r) => setTimeout(r, 30));\n" +
+          "      return item;\n" +
+          "    }, 2);\n" +
+          "  } catch (err) {\n" +
+          "    thrown = err;\n" +
+          "  }\n" +
+          '  assert.ok(thrown, "Expected asyncPool to reject");\n' +
+          '  assert.equal(thrown.message, "Task 2 failed");\n' +
+          "  await new Promise((r) => setTimeout(r, 100));\n" +
+          '  assert.equal(executed.includes(3), false, "Task 3 should not have started after failure");\n' +
+          "});\n",
+      });
+    },
+  },
+  {
+    id: "LIVE-REDUX-STRUCTURAL-SHARING",
+    name: "Immutable State Tree Structural Sharing Mutation Leak",
+    origin: "Redux / Immer archetype (live)",
+    category: "State Architecture & Invariant",
+    scenario: "regression-rollback",
+    experienceKeywords: "immutable state tree structural sharing direct mutation reference identity freeze",
+    experienceDimension: "DOM",
+    sourceFiles: ["src/state.js"],
+    testFiles: ["test/state.test.mjs"],
+    fixtureHasTests: true,
+    expectedBaselineFails: 0,
+    soloSeesTests: true,
+    brief:
+      "Fix the state updater function in src/state.js: export function setIn(state, pathArray, value).\n\n" +
+      "Bug: The current setIn mutates nested objects in-place directly on state! This breaks immutability:\n" +
+      "  1. It throws a TypeError when operating on Object.freeze(state).\n" +
+      "  2. It violates structural sharing: unmodified siblings and parents MUST retain their original object reference " +
+      "     identity (prev === next), while every object along the modified path MUST receive a new shallow-copied reference.\n\n" +
+      "Required: Pure structural sharing without mutating the input state.",
+    fixture(ws) {
+      writeWorkspaceFiles(ws, {
+        "package.json": PKG_JSON,
+        "src/state.js":
+          "export function setIn(state, pathArray, value) {\n" +
+          "  if (!pathArray || pathArray.length === 0) return value;\n" +
+          "  // BUG: direct in-place mutation of the input state tree\n" +
+          "  let curr = state;\n" +
+          "  for (let i = 0; i < pathArray.length - 1; i++) {\n" +
+          "    const key = pathArray[i];\n" +
+          "    if (curr[key] === undefined || curr[key] === null) {\n" +
+          "      curr[key] = {};\n" +
+          "    }\n" +
+          "    curr = curr[key];\n" +
+          "  }\n" +
+          "  curr[pathArray[pathArray.length - 1]] = value;\n" +
+          "  return state;\n" +
+          "}\n",
+        "test/state.test.mjs":
+          'import test from "node:test";\n' +
+          'import assert from "node:assert/strict";\n' +
+          'import { setIn } from "../src/state.js";\n\n' +
+          'test("updates leaf value correctly", () => {\n' +
+          '  const state = { a: { b: 1 } };\n' +
+          '  const next = setIn(state, ["a", "b"], 2);\n' +
+          "  assert.equal(next.a.b, 2);\n" +
+          "});\n\n" +
+          'test("unmodified sibling branches retain reference identity", () => {\n' +
+          '  const sibling = { untouched: true };\n' +
+          '  const state = { a: { b: 1 }, sibling };\n' +
+          '  const next = setIn(state, ["a", "b"], 2);\n' +
+          '  assert.equal(next.sibling, sibling, "Sibling reference must be preserved");\n' +
+          "});\n\n" +
+          'test("preserves immutability and never mutates frozen input state", () => {\n' +
+          "  const original = Object.freeze({\n" +
+          "    user: Object.freeze({\n" +
+          '      profile: Object.freeze({ name: "Alice", age: 30 }),\n' +
+          '      settings: Object.freeze({ theme: "dark" }),\n' +
+          "    }),\n" +
+          "    meta: Object.freeze({ version: 1 }),\n" +
+          "  });\n" +
+          '  const next = setIn(original, ["user", "profile", "name"], "Bob");\n' +
+          '  assert.equal(original.user.profile.name, "Alice");\n' +
+          '  assert.equal(next.user.profile.name, "Bob");\n' +
+          "  assert.notEqual(next, original);\n" +
+          "  assert.notEqual(next.user, original.user);\n" +
+          "  assert.notEqual(next.user.profile, original.user.profile);\n" +
+          "  assert.equal(next.user.settings, original.user.settings);\n" +
+          "  assert.equal(next.meta, original.meta);\n" +
+          "});\n",
+      });
+    },
+  },
+  {
+    id: "LIVE-GRAPH-CYCLE-DEADLOCK",
+    name: "DAG Topological Dependency Resolver Cycle Diagnosis",
+    origin: "Package manager dependency archetype (live)",
+    category: "Deep Algorithmic Boundary",
+    scenario: "boundary",
+    experienceKeywords: "topological sort dependency cycle detection diagnostic chain Kahn",
+    experienceDimension: "DOM",
+    sourceFiles: ["src/graph.js"],
+    testFiles: ["test/graph.test.mjs"],
+    fixtureHasTests: true,
+    expectedBaselineFails: 0,
+    soloSeesTests: true,
+    brief:
+      "Fix the dependency topological sorter in src/graph.js: export function resolveOrder(graph).\n\n" +
+      "where graph is a map of { [node]: string[] dependencies }. Returns an array of nodes in dependency-first " +
+      "order (dependencies appear before the nodes that depend on them).\n\n" +
+      "Bug: The sorter fails to properly format cycle diagnostics when circular dependencies exist. When a cycle " +
+      "exists (e.g. A -> B -> C -> A), it must throw an Error containing 'Cycle detected:' and displaying the arrow chain '->'.\n\n" +
+      "Constraints:\n" +
+      "  - When multiple nodes have 0 dependencies at the same step, resolve them in alphabetical order.",
+    fixture(ws) {
+      writeWorkspaceFiles(ws, {
+        "package.json": PKG_JSON,
+        "src/graph.js":
+          "export function resolveOrder(graph) {\n" +
+          "  const nodes = Object.keys(graph).sort();\n" +
+          "  const resolved = [];\n" +
+          "  const visited = new Set();\n" +
+          "  const visiting = new Set();\n" +
+          "  function visit(node) {\n" +
+          "    if (visited.has(node)) return;\n" +
+          "    if (visiting.has(node)) {\n" +
+          '      // BUG: throws generic error without cycle chain details\n' +
+          '      throw new Error("Cycle detected");\n' +
+          "    }\n" +
+          "    visiting.add(node);\n" +
+          "    const deps = (graph[node] || []).slice().sort();\n" +
+          "    for (const dep of deps) {\n" +
+          "      if (graph[dep]) visit(dep);\n" +
+          "    }\n" +
+          "    visiting.delete(node);\n" +
+          "    visited.add(node);\n" +
+          "    resolved.push(node);\n" +
+          "  }\n" +
+          "  for (const n of nodes) visit(n);\n" +
+          "  return resolved;\n" +
+          "}\n",
+        "test/graph.test.mjs":
+          'import test from "node:test";\n' +
+          'import assert from "node:assert/strict";\n' +
+          'import { resolveOrder } from "../src/graph.js";\n\n' +
+          'test("linear and diamond dependencies resolve in valid order", () => {\n' +
+          "  const graph = {\n" +
+          '    app: ["service", "config"],\n' +
+          '    service: ["db", "config"],\n' +
+          "    config: [],\n" +
+          '    db: ["config"],\n' +
+          "  };\n" +
+          "  const order = resolveOrder(graph);\n" +
+          '  assert.ok(order.indexOf("config") < order.indexOf("db"));\n' +
+          '  assert.ok(order.indexOf("db") < order.indexOf("service"));\n' +
+          '  assert.ok(order.indexOf("service") < order.indexOf("app"));\n' +
+          "});\n\n" +
+          'test("alphabetical tie-breaking produces deterministic order", () => {\n' +
+          "  const graph = { c: [], b: [], a: [] };\n" +
+          "  const order = resolveOrder(graph);\n" +
+          '  assert.deepEqual(order, ["a", "b", "c"]);\n' +
+          "});\n\n" +
+          'test("circular dependency throws error detailing cycle path", () => {\n' +
+          "  const graph = {\n" +
+          '    A: ["B"],\n' +
+          '    B: ["C"],\n' +
+          '    C: ["A"],\n' +
+          "  };\n" +
+          "  assert.throws(\n" +
+          "    () => resolveOrder(graph),\n" +
+          "    (err) => {\n" +
+          '      assert.ok(err.message.includes("Cycle detected:"));\n' +
+          '      assert.ok(err.message.includes("->"));\n' +
+          '      assert.ok(err.message.includes("A") && err.message.includes("B") && err.message.includes("C"));\n' +
+          "      return true;\n" +
+          "    },\n" +
+          "  );\n" +
+          "});\n",
+      });
+    },
+  },
+  {
+    id: "LIVE-CACHE-STAMPEDE-MUTEX",
+    name: "Cache Stampede Single-Flight Coalescing Mutex",
+    origin: "Distributed caching / singleflight archetype (live)",
+    category: "High Concurrency Invariant",
+    scenario: "boundary",
+    experienceKeywords: "cache stampede thundering herd singleflight mutex coalescing promise dedup",
+    experienceDimension: "DOM",
+    sourceFiles: ["src/cache.js"],
+    testFiles: ["test/cache.test.mjs"],
+    fixtureHasTests: true,
+    expectedBaselineFails: 0,
+    soloSeesTests: true,
+    brief:
+      "Fix the SingleFlightCache in src/cache.js exporting class SingleFlightCache.\n\n" +
+      "Bug: Thundering herd (cache stampede). When a key is uncached or expired, concurrent calls to getOrFetch(key, fetchFn) " +
+      "each invoke fetchFn separately. Under a burst of 50 concurrent requests for an uncached key, fetchFn is called 50 times " +
+      "instead of coalescing into a single in-flight promise.\n\n" +
+      "Required:\n" +
+      "  - Cache hits must return cached values without calling fetchFn.\n" +
+      "  - In-flight calls for the same key must coalesce into a single execution of fetchFn.\n" +
+      "  - Once expired, new requests fetch fresh data.",
+    fixture(ws) {
+      writeWorkspaceFiles(ws, {
+        "package.json": PKG_JSON,
+        "src/cache.js":
+          "export class SingleFlightCache {\n" +
+          "  constructor(ttlMs = 500) {\n" +
+          "    this.ttlMs = ttlMs;\n" +
+          "    this.cache = new Map();\n" +
+          "  }\n\n" +
+          "  async getOrFetch(key, fetchFn) {\n" +
+          "    const entry = this.cache.get(key);\n" +
+          "    const now = Date.now();\n" +
+          "    if (entry && now < entry.expiresAt) return entry.value;\n" +
+          "    // BUG: does not coalesce concurrent in-flight requests for key\n" +
+          "    const value = await fetchFn();\n" +
+          "    this.cache.set(key, { value, expiresAt: now + this.ttlMs });\n" +
+          "    return value;\n" +
+          "  }\n" +
+          "}\n",
+        "test/cache.test.mjs":
+          'import test from "node:test";\n' +
+          'import assert from "node:assert/strict";\n' +
+          'import { SingleFlightCache } from "../src/cache.js";\n\n' +
+          'test("cache hit serves from memory without re-fetch", async () => {\n' +
+          "  const cache = new SingleFlightCache(1000);\n" +
+          "  let calls = 0;\n" +
+          '  const val1 = await cache.getOrFetch("user:1", async () => { calls++; return "data-1"; });\n' +
+          '  const val2 = await cache.getOrFetch("user:1", async () => { calls++; return "data-1"; });\n' +
+          '  assert.equal(val1, "data-1");\n' +
+          '  assert.equal(val2, "data-1");\n' +
+          "  assert.equal(calls, 1);\n" +
+          "});\n\n" +
+          'test("expired entry triggers fresh fetch", async () => {\n' +
+          "  const cache = new SingleFlightCache(20);\n" +
+          "  let calls = 0;\n" +
+          '  await cache.getOrFetch("key", async () => { calls++; return "v1"; });\n' +
+          "  await new Promise((r) => setTimeout(r, 30));\n" +
+          '  const val = await cache.getOrFetch("key", async () => { calls++; return "v2"; });\n' +
+          '  assert.equal(val, "v2");\n' +
+          "  assert.equal(calls, 2);\n" +
+          "});\n\n" +
+          'test("burst of 50 concurrent callers triggers fetchFn exactly once", async () => {\n' +
+          "  const cache = new SingleFlightCache(1000);\n" +
+          "  let calls = 0;\n" +
+          "  const callers = Array.from({ length: 50 }, () =>\n" +
+          '    cache.getOrFetch("burst-key", async () => {\n' +
+          "      calls++;\n" +
+          "      await new Promise((r) => setTimeout(r, 20));\n" +
+          '      return "burst-result";\n' +
+          "    }),\n" +
+          "  );\n" +
+          "  const results = await Promise.all(callers);\n" +
+          '  assert.equal(calls, 1, `Expected exactly 1 fetchFn call, got ${calls}`);\n' +
+          '  assert.equal(results.every((r) => r === "burst-result"), true);\n' +
+          "});\n",
+      });
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -1979,6 +2405,142 @@ const CANONICAL_FIXES = {
     "    return false;\n" +
     "  }\n" +
     "}\n",
+  "LIVE-DIFF-PATCH-APPLY":
+    "export function applyUnifiedDiff(originalText, diffText) {\n" +
+    "  if (!diffText || !diffText.trim()) return originalText;\n" +
+    '  const lines = originalText.split("\\n");\n' +
+    '  const diffLines = diffText.split("\\n");\n' +
+    "  const hunkRegex = /^@@ -(\\d+)(?:,(\\d+))? \\+(\\d+)(?:,(\\d+))? @@/;\n" +
+    "  let i = 0;\n" +
+    "  let offset = 0;\n" +
+    "  while (i < diffLines.length) {\n" +
+    "    const match = diffLines[i].match(hunkRegex);\n" +
+    "    if (!match) { i++; continue; }\n" +
+    "    const oldStart = parseInt(match[1], 10);\n" +
+    "    i++;\n" +
+    "    const hunkOps = [];\n" +
+    '    while (i < diffLines.length && !diffLines[i].startsWith("@@")) {\n' +
+    "      const line = diffLines[i];\n" +
+    '      if (line.startsWith("+") || line.startsWith("-") || line.startsWith(" ")) {\n' +
+    "        hunkOps.push(line);\n" +
+    "      }\n" +
+    "      i++;\n" +
+    "    }\n" +
+    "    const targetIndex = (oldStart - 1) + offset;\n" +
+    "    const newLines = [];\n" +
+    "    let oldLinesCount = 0;\n" +
+    "    for (const op of hunkOps) {\n" +
+    '      if (op.startsWith("+")) {\n' +
+    "        newLines.push(op.slice(1));\n" +
+    '      } else if (op.startsWith("-")) {\n' +
+    "        oldLinesCount++;\n" +
+    '      } else if (op.startsWith(" ")) {\n' +
+    "        oldLinesCount++;\n" +
+    "        newLines.push(op.slice(1));\n" +
+    "      }\n" +
+    "    }\n" +
+    "    lines.splice(targetIndex, oldLinesCount, ...newLines);\n" +
+    "    offset += (newLines.length - oldLinesCount);\n" +
+    "  }\n" +
+    '  return lines.join("\\n");\n' +
+    "}\n",
+  "LIVE-ASYNC-BATCH-POOL":
+    "export async function asyncPool(items, iteratorFn, concurrency = 2) {\n" +
+    "  const results = new Array(items.length);\n" +
+    "  let index = 0;\n" +
+    "  let aborted = false;\n" +
+    "  let firstError = null;\n" +
+    "  async function worker() {\n" +
+    "    while (index < items.length && !aborted) {\n" +
+    "      const i = index++;\n" +
+    "      try {\n" +
+    "        results[i] = await iteratorFn(items[i], i);\n" +
+    "      } catch (err) {\n" +
+    "        if (!aborted) {\n" +
+    "          aborted = true;\n" +
+    "          firstError = err;\n" +
+    "        }\n" +
+    "        break;\n" +
+    "      }\n" +
+    "    }\n" +
+    "  }\n" +
+    "  const workers = [];\n" +
+    "  const count = Math.min(concurrency, items.length);\n" +
+    "  for (let w = 0; w < count; w++) workers.push(worker());\n" +
+    "  await Promise.all(workers);\n" +
+    "  if (firstError) throw firstError;\n" +
+    "  return results;\n" +
+    "}\n",
+  "LIVE-REDUX-STRUCTURAL-SHARING":
+    "export function setIn(state, pathArray, value) {\n" +
+    "  if (!pathArray || pathArray.length === 0) return value;\n" +
+    "  function update(cur, idx) {\n" +
+    "    if (idx === pathArray.length) return value;\n" +
+    "    const key = pathArray[idx];\n" +
+    "    const curObj = (cur && typeof cur === 'object') ? cur : {};\n" +
+    "    const nextChild = update(curObj[key], idx + 1);\n" +
+    "    if (curObj[key] === nextChild && cur !== undefined) return cur;\n" +
+    "    const clone = Array.isArray(curObj) ? [...curObj] : { ...curObj };\n" +
+    "    clone[key] = nextChild;\n" +
+    "    return clone;\n" +
+    "  }\n" +
+    "  return update(state, 0);\n" +
+    "}\n",
+  "LIVE-GRAPH-CYCLE-DEADLOCK":
+    "export function resolveOrder(graph) {\n" +
+    "  const nodes = Object.keys(graph).sort();\n" +
+    "  const resolved = [];\n" +
+    "  const visited = new Set();\n" +
+    "  const visiting = new Set();\n" +
+    "  const pathStack = [];\n" +
+    "  function visit(node) {\n" +
+    "    if (visited.has(node)) return;\n" +
+    "    if (visiting.has(node)) {\n" +
+    "      const cycleStart = pathStack.indexOf(node);\n" +
+    "      const cyclePath = [...pathStack.slice(cycleStart), node].join(' -> ');\n" +
+    '      throw new Error(`Cycle detected: ${cyclePath}`);\n' +
+    "    }\n" +
+    "    visiting.add(node);\n" +
+    "    pathStack.push(node);\n" +
+    "    const deps = (graph[node] || []).slice().sort();\n" +
+    "    for (const dep of deps) {\n" +
+    "      if (graph[dep]) visit(dep);\n" +
+    "    }\n" +
+    "    pathStack.pop();\n" +
+    "    visiting.delete(node);\n" +
+    "    visited.add(node);\n" +
+    "    resolved.push(node);\n" +
+    "  }\n" +
+    "  for (const n of nodes) visit(n);\n" +
+    "  return resolved;\n" +
+    "}\n",
+  "LIVE-CACHE-STAMPEDE-MUTEX":
+    "export class SingleFlightCache {\n" +
+    "  constructor(ttlMs = 500) {\n" +
+    "    this.ttlMs = ttlMs;\n" +
+    "    this.cache = new Map();\n" +
+    "    this.inFlight = new Map();\n" +
+    "  }\n\n" +
+    "  async getOrFetch(key, fetchFn) {\n" +
+    "    const entry = this.cache.get(key);\n" +
+    "    const now = Date.now();\n" +
+    "    if (entry && now < entry.expiresAt) return entry.value;\n" +
+    "    if (this.inFlight.has(key)) {\n" +
+    "      return this.inFlight.get(key);\n" +
+    "    }\n" +
+    "    const promise = (async () => {\n" +
+    "      try {\n" +
+    "        const value = await fetchFn();\n" +
+    "        this.cache.set(key, { value, expiresAt: Date.now() + this.ttlMs });\n" +
+    "        return value;\n" +
+    "      } finally {\n" +
+    "        this.inFlight.delete(key);\n" +
+    "      }\n" +
+    "    })();\n" +
+    "    this.inFlight.set(key, promise);\n" +
+    "    return promise;\n" +
+    "  }\n" +
+    "}\n",
 };
 
 const CANONICAL_SEMVER_HYPHEN_PATCH =
@@ -2129,6 +2691,11 @@ function countTargetTests(task) {
     "LIVE-SEMVER-REGRESSION": 1,
     "LIVE-TOKENIZER-BOUNDARY": 1,
     "LIVE-RATELIMIT-RACE": 1,
+    "LIVE-DIFF-PATCH-APPLY": 1,
+    "LIVE-ASYNC-BATCH-POOL": 1,
+    "LIVE-REDUX-STRUCTURAL-SHARING": 1,
+    "LIVE-GRAPH-CYCLE-DEADLOCK": 1,
+    "LIVE-CACHE-STAMPEDE-MUTEX": 1,
   };
   return map[task.id] ?? 0;
 }
@@ -2138,9 +2705,10 @@ function countTargetTests(task) {
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const out = { json: null, tasks: null, selftest: false, help: false };
+  const out = { json: null, html: null, tasks: null, selftest: false, help: false };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--json") out.json = argv[++i];
+    else if (argv[i] === "--html") out.html = argv[++i];
     else if (argv[i] === "--offline-selftest") out.selftest = true;
     else if (argv[i] === "--tasks") out.tasks = String(argv[++i] || "").split(",").map((s) => s.trim()).filter(Boolean);
     else if (argv[i] === "--help" || argv[i] === "-h") out.help = true;
@@ -2158,9 +2726,10 @@ Usage:
 
 Options:
   --help, -h            Show this help message
-  --offline-selftest    Run 21 offline harness validation checks (no API calls)
+  --offline-selftest    Run 36 offline harness validation checks (no API calls)
   --tasks <id1,id2>     Run specific tasks by ID (comma-separated)
   --json <path>         Write results summary JSON to file
+  --html <path>         Write interactive HTML report to file
 `);
     process.exit(0);
   } else if (args.selftest) {
@@ -2173,6 +2742,15 @@ Options:
           fs.mkdirSync(path.dirname(path.resolve(args.json)), { recursive: true });
           fs.writeFileSync(args.json, JSON.stringify(summary, null, 2), "utf8");
           console.log(`results JSON written to ${args.json}`);
+        }
+        const htmlPath = args.html || path.join(REPO_ROOT, "live-results", "report.html");
+        try {
+          fs.mkdirSync(path.dirname(path.resolve(htmlPath)), { recursive: true });
+          const html = generateHtmlReport(summary);
+          fs.writeFileSync(htmlPath, html, "utf8");
+          console.log(`interactive HTML report written to ${htmlPath}`);
+        } catch (err) {
+          console.error("Failed to generate HTML report:", err);
         }
         // Exit 0 when the live run completed; outcome deltas are empirical
         // results, not CI gate conditions.

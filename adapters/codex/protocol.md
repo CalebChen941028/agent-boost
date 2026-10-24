@@ -38,7 +38,7 @@ For single-agent CLI environments such as Codex CLI, execute the Boost state mac
 
 ### 5. `[Role: Independent Reviewer]` (Read-Only)
 - Inspect `git status --short` and `git diff` against the **Harness² 6-Criterion Yardstick**: `DELIVERY`, `CONFORMANCE`, `FIDELITY`, `INTERNAL CONSISTENCY`, `OPERATIONAL FITNESS`, and `FINISH`.
-- Calculate quantitative **Yardstick Score** (`calculateYardstickScore`, 0–100 scale, pass threshold $\ge 80$).
+- Calculate quantitative **Yardstick Score** (`calculateYardstickScore`, 0–100 scale, pass threshold $\ge 85$).
 - Classify functional regressions, crashes, or unmet criteria as `high` severity.
 
 ### 6. `[Role: Report Scribe & Lifelong Experience Reflector]`

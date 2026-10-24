@@ -141,7 +141,7 @@ npm test
 
 ## 商标与免责声明
 
-Antigravity 是 Google LLC 的商标。本项目为独立开源社区作品，与 Google LLC、Anthropic、OpenAI 或 DeepSeek 无任何关联，亦未获得其官方授权或背书。
+Antigravity 是 Google LLC 的商标。本项目为独立开源社区作品，与 Google LLC、Anthropic、OpenAI、DeepSeek 或 WorkBuddy 无任何关联，亦未获得其官方授权或背书。文中所提及的所有产品名称、商标与品牌均为其各自所有者的财产。
 
 ---
 

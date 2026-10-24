@@ -569,6 +569,29 @@ evidence: Multiple variables changed
   // No keyword match returns empty string
   const resUnrelated = matchExperienceCues(cueBank, "Completely unrelated quantum mechanics topic", 3);
   assert.equal(resUnrelated, "");
+
+  // CJK Chinese task matching without spaces
+  const zhBank = `
+<experience>
+dimension: DOM
+cue: 遇到内存泄漏时排查未清理的定时器
+lesson: 检查 setInterval 与事件监听器
+verdict: helped
+confidence: high
+evidence: memory.ts:45
+</experience>
+<experience>
+dimension: INV
+cue: 解决并发死锁时使用有序锁获取
+lesson: 统一锁获取顺序
+verdict: helped
+confidence: high
+evidence: lock.ts:12
+</experience>
+`;
+  const resZh = matchExperienceCues(zhBank, "排查系统的内存泄漏问题", 1);
+  assert.ok(resZh.includes("内存泄漏"), "Chinese query without spaces must recall relevant cue");
+  assert.ok(!resZh.includes("并发死锁"));
 });
 
 test("evaluateTaskComplexity performs dynamic compute allocation across simple, standard, and hard tiers", () => {
@@ -649,10 +672,28 @@ test("calculateYardstickScore quantitatively evaluates 6 Harness² criteria and 
   assert.equal(mixedRes.breakdown.internalConsistency, 85);
   assert.equal(mixedRes.breakdown.finish, 95);
   assert.equal(mixedRes.breakdown.delivery, 95);
-  assert.equal(mixedRes.passed, true, "Minor defects without high severity can pass if score >= 80");
-  assert.ok(mixedRes.overallScore >= 80);
+  assert.equal(mixedRes.overallScore, 96);
+  assert.equal(mixedRes.passed, true, "Minor defects without high severity can pass if score >= 85");
+  assert.ok(mixedRes.overallScore >= 85);
 
-  // Custom weights
+  // Moderate defects dropping below 85-point threshold without high severity
+  const moderateFindings = [
+    { what: "Missing critical file 1", evidence: "docs.md", severity: "medium", criterion: "delivery" },
+    { what: "Missing critical file 2", evidence: "api.md", severity: "medium", criterion: "delivery" },
+    { what: "Schema shape mismatch 1", evidence: "index.ts", severity: "medium", criterion: "conformance" },
+    { what: "Schema shape mismatch 2", evidence: "app.ts", severity: "medium", criterion: "conformance" },
+    { what: "Unverified claim in docstring", evidence: "app.ts", severity: "medium", criterion: "fidelity" },
+  ];
+  const modRes = calculateYardstickScore(moderateFindings);
+  assert.equal(modRes.overallScore, 84);
+  assert.equal(modRes.passed, false, "Score below 85 must fail even without high severity defects");
+
+  // Partial custom weights without omitted keys exceeding 100
+  const partialWeights = { delivery: 1, conformance: 1 };
+  const partialRes = calculateYardstickScore([], partialWeights);
+  assert.equal(partialRes.overallScore, 100, "Partial customWeights must normalize to 100%");
+
+  // Explicit full custom weights
   const customWeights = {
     delivery: 0.5,
     conformance: 0.5,

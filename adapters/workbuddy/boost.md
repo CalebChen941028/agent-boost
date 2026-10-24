@@ -48,7 +48,7 @@ When the user invokes `/boost` or requests deep reasoning on a complex task:
 
 ### Phase 4: Independent 6-Criterion Review & Yardstick Scoring
 - Audit live workspace diffs and `fixHistory` against: `DELIVERY`, `CONFORMANCE`, `FIDELITY`, `INTERNAL CONSISTENCY`, `OPERATIONAL FITNESS`, and `FINISH`.
-- Compute quantitative **Yardstick Score** (`calculateYardstickScore`, 0–100 scale, pass threshold $\ge 80$).
+- Compute quantitative **Yardstick Score** (`calculateYardstickScore`, 0–100 scale, pass threshold $\ge 85$).
 - Flag functional bugs, crashes, or unmet criteria as `high` severity.
 
 ### Phase 5: Synthesis, Objective Conclusion & Lifelong Experience Reflection

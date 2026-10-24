@@ -54,12 +54,12 @@ Run the Boost Deep Reasoning & Verification Protocol on task: $ARGUMENTS
   4. `INTERNAL CONSISTENCY`: Types, exports, configs, and tests agree.
   5. `OPERATIONAL FITNESS`: Compiles and runs cleanly for downstream callers.
   6. `FINISH`: No leftover `TODO`s, placeholders, or mock stubs.
-- Compute quantitative **Yardstick Score** (`calculateYardstickScore`, 0–100 scale, pass threshold $\ge 80$).
+- Compute quantitative **Yardstick Score** (`calculateYardstickScore`, 0–100 scale, pass threshold $\ge 85$).
 - Flag genuine functional bugs, crashes, or unmet criteria as `high` severity.
 
 ### Phase 5: Synthesis, Objective Conclusion & Lifelong Experience Reflection
 - **[Role: Report Scribe]**:
   - Output a grounded Markdown report with Yardstick Score breakdown and distinguishing verified facts from unverified items (`notCovered`).
-  - **Honest Conclusion Gate (B1)**: Never claim full completion if any verification gap remains OR if the Independent Reviewer identified any `high`-severity finding OR if Yardstick Score $< 80$.
+  - **Honest Conclusion Gate (B1)**: Never claim full completion if any verification gap remains OR if the Independent Reviewer identified any `high`-severity finding OR if Yardstick Score $< 85$.
   - **Harness² Experience Cue**: If a clear diagnostic/execution contrast occurred, emit one `<experience>` block (`dimension: INV|DOM`, `cue`, `lesson`, `verdict: helped`, `confidence`, `evidence`) and persist to `.agent-boost/experiences.md`; if confounded or uneventful, emit `NO_ENTRY`.
 ```

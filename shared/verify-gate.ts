@@ -407,8 +407,26 @@ export function matchExperienceCues(
 
   const keywords = [];
   for (const token of rawTokens) {
-    if (token.length >= 2 && !STOPWORDS.has(token)) {
-      keywords.push(token);
+    if (/[\u4e00-\u9fa5]/.test(token)) {
+      const chunks = token.split(/[请的在与了按将并及到为对以等从个项用做后中进行完成实现]+/);
+      for (const chunk of chunks) {
+        if (!chunk || chunk.length < 2) continue;
+        if (!STOPWORDS.has(chunk) && !keywords.includes(chunk)) {
+          keywords.push(chunk);
+        }
+        if (chunk.length > 2) {
+          for (let i = 0; i <= chunk.length - 2; i++) {
+            const sub = chunk.slice(i, i + 2);
+            if (!STOPWORDS.has(sub) && !keywords.includes(sub)) {
+              keywords.push(sub);
+            }
+          }
+        }
+      }
+    } else {
+      if (token.length >= 2 && !STOPWORDS.has(token)) {
+        keywords.push(token);
+      }
     }
   }
 
@@ -616,12 +634,12 @@ export function calculateYardstickScore(
   };
 
   const weights = {
-    delivery: 1 / 6,
-    conformance: 1 / 6,
-    fidelity: 1 / 6,
-    internalConsistency: 1 / 6,
-    operationalFitness: 1 / 6,
-    finish: 1 / 6,
+    delivery: 0.25,
+    conformance: 0.2,
+    fidelity: 0.15,
+    internalConsistency: 0.15,
+    operationalFitness: 0.15,
+    finish: 0.1,
   };
 
   if (customWeights && typeof customWeights === "object") {
@@ -643,6 +661,8 @@ export function calculateYardstickScore(
       for (const k of keys) {
         if (typeof customWeights[k] === "number" && customWeights[k] >= 0) {
           weights[k] = customWeights[k] / sum;
+        } else {
+          weights[k] = 0;
         }
       }
     }
@@ -703,7 +723,7 @@ export function calculateYardstickScore(
     });
   }
 
-  const overallScore = Math.round(
+  const rawScore = Math.round(
     scores.delivery * weights.delivery +
       scores.conformance * weights.conformance +
       scores.fidelity * weights.fidelity +
@@ -711,8 +731,9 @@ export function calculateYardstickScore(
       scores.operationalFitness * weights.operationalFitness +
       scores.finish * weights.finish,
   );
+  const overallScore = Math.min(100, Math.max(0, rawScore));
 
-  const passed = overallScore >= 80 && !hasHighSeverity;
+  const passed = overallScore >= 85 && !hasHighSeverity;
 
   return {
     overallScore,

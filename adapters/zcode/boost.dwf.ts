@@ -453,8 +453,26 @@ export function matchExperienceCues(
 
   const keywords = [];
   for (const token of rawTokens) {
-    if (token.length >= 2 && !STOPWORDS.has(token)) {
-      keywords.push(token);
+    if (/[\u4e00-\u9fa5]/.test(token)) {
+      const chunks = token.split(/[请的在与了按将并及到为对以等从个项用做后中进行完成实现]+/);
+      for (const chunk of chunks) {
+        if (!chunk || chunk.length < 2) continue;
+        if (!STOPWORDS.has(chunk) && !keywords.includes(chunk)) {
+          keywords.push(chunk);
+        }
+        if (chunk.length > 2) {
+          for (let i = 0; i <= chunk.length - 2; i++) {
+            const sub = chunk.slice(i, i + 2);
+            if (!STOPWORDS.has(sub) && !keywords.includes(sub)) {
+              keywords.push(sub);
+            }
+          }
+        }
+      }
+    } else {
+      if (token.length >= 2 && !STOPWORDS.has(token)) {
+        keywords.push(token);
+      }
     }
   }
 
@@ -662,12 +680,12 @@ export function calculateYardstickScore(
   };
 
   const weights = {
-    delivery: 1 / 6,
-    conformance: 1 / 6,
-    fidelity: 1 / 6,
-    internalConsistency: 1 / 6,
-    operationalFitness: 1 / 6,
-    finish: 1 / 6,
+    delivery: 0.25,
+    conformance: 0.2,
+    fidelity: 0.15,
+    internalConsistency: 0.15,
+    operationalFitness: 0.15,
+    finish: 0.1,
   };
 
   if (customWeights && typeof customWeights === "object") {
@@ -689,6 +707,8 @@ export function calculateYardstickScore(
       for (const k of keys) {
         if (typeof customWeights[k] === "number" && customWeights[k] >= 0) {
           weights[k] = customWeights[k] / sum;
+        } else {
+          weights[k] = 0;
         }
       }
     }
@@ -749,7 +769,7 @@ export function calculateYardstickScore(
     });
   }
 
-  const overallScore = Math.round(
+  const rawScore = Math.round(
     scores.delivery * weights.delivery +
       scores.conformance * weights.conformance +
       scores.fidelity * weights.fidelity +
@@ -757,8 +777,9 @@ export function calculateYardstickScore(
       scores.operationalFitness * weights.operationalFitness +
       scores.finish * weights.finish,
   );
+  const overallScore = Math.min(100, Math.max(0, rawScore));
 
-  const passed = overallScore >= 80 && !hasHighSeverity;
+  const passed = overallScore >= 85 && !hasHighSeverity;
 
   return {
     overallScore,
@@ -1069,7 +1090,7 @@ if (allWorkstreamsFailed) {
     try {
       const detectRes = await world.run("sh", [
         "-c",
-        "test -f package.json && grep -q '\"test\"' package.json && echo 'npm test' || (test -f Cargo.toml && echo 'cargo test' || (test -f Makefile && grep -q '^test:' Makefile && echo 'make test' || (test -f go.mod && echo 'go test ./...' || true)))",
+        "test -f package.json && grep -q '\"test\"' package.json && echo 'npm test' || (test -f Cargo.toml && echo 'cargo test' || (test -f Makefile && grep -q '^test:' Makefile && echo 'make test' || (test -f go.mod && echo 'go test ./...' || (test -f pyproject.toml && echo 'pytest' || (test -f requirements.txt && echo 'pytest' || true)))))",
       ]);
       if (detectRes.exitCode === 0 && detectRes.stdout.trim()) {
         effectiveVerifyCommand = detectRes.stdout.trim();
@@ -1084,19 +1105,48 @@ if (allWorkstreamsFailed) {
     }
   }
 
+  // Reproduction test synthesis when verifyCommand is not provided (Self-Debugging, Chen et al. 2023)
+  let synthesizedTestScript = false;
+  if (!effectiveVerifyCommand) {
+    try {
+      const synthAgent = agent(isEn ? "Test Synthesizer" : "用例合成", {
+        system: isEn
+          ? `Synthesize a deterministic shell test script (verify_synth.sh) to verify task requirements against code modifications. The script must exit 0 on success and non-zero on failure. Return structured JSON with { "script": string, "rationale": string }. ${HARNESS_GUARDRAIL_EN}`
+          : `你是测试合成员（Self-Debugging 机制）。根据任务需求与代码改动，合成一段确定性的轻量验证脚本（verify_synth.sh）。成功退出码为 0，失败为非 0。直接返回结构化 JSON：{ "script": string, "rationale": string }。${HARNESS_GUARDRAIL_ZH}`,
+        ...(teamProfile === "quality" ? {} : lightTier),
+      });
+      const synthRes = await synthAgent.ask<{ script: string; rationale: string }>(
+        isEn
+          ? `Synthesize reproduction test script verify_synth.sh for task:\nTask: ${task}\nWorkstream results: ${JSON.stringify(results)}`
+          : `为以下任务合成确定性验收脚本 verify_synth.sh：\n任务：${task}\n工作流执行结果：${JSON.stringify(results)}`,
+      );
+      if (synthRes && typeof synthRes.script === "string" && synthRes.script.trim()) {
+        const scriptContent = synthRes.script.trim();
+        await world.run("sh", [
+          "-c",
+          `cat << 'EOF' > verify_synth.sh\n${scriptContent}\nEOF\nchmod +x verify_synth.sh`,
+        ]);
+        effectiveVerifyCommand = "./verify_synth.sh";
+        synthesizedTestScript = true;
+        log(
+          isEn
+            ? `Synthesized deterministic reproduction test script: "verify_synth.sh" (${synthRes.rationale || "Self-Debugging"})`
+            : `已合成确定性复现测试脚本：「verify_synth.sh」（${synthRes.rationale || "Self-Debugging 自动化用例"}）`,
+        );
+      }
+    } catch {
+      // Fall back to manual verifier if synthesis fails
+    }
+  }
+
   if (effectiveVerifyCommand) {
     let lastFail = "";
     let lastSignature = "";
-    for (let round = 1; round <= MAX_FIX_ROUNDS; round++) {
-      // LATS Tree Search: checkpoint workspace before repair
-      let checkpointSha = "";
-      try {
-        const cpRes = await world.run("sh", ["-c", "git rev-parse HEAD 2>/dev/null || true"]);
-        if (cpRes.exitCode === 0 && cpRes.stdout.trim()) {
-          checkpointSha = cpRes.stdout.trim();
-        }
-      } catch {}
+    let lastExitCode = 0;
+    let lastWasInv = false;
+    let activeCheckpoint = "";
 
+    for (let round = 1; round <= MAX_FIX_ROUNDS; round++) {
       const gate = await world.run("sh", ["-c", effectiveVerifyCommand]);
       if (gate.exitCode === 0) {
         checkEvidence = isEn
@@ -1117,7 +1167,46 @@ if (allWorkstreamsFailed) {
       // Invariant Pre-flight check (INV-first)
       const invPreflightFailed = isInvariantFailure(failOut, gate.exitCode);
 
+      // LATS Tree Search: Check for regression compared to previous repair state
+      if (round > 1 && activeCheckpoint) {
+        const isRegression =
+          (invPreflightFailed && !lastWasInv) ||
+          (gate.exitCode > lastExitCode && gate.exitCode !== 0);
+        if (isRegression) {
+          log(
+            isEn
+              ? `Regression detected in Round ${round} (exit code ${gate.exitCode}, INV break: ${invPreflightFailed}). LATS rolling back to checkpoint [${activeCheckpoint.slice(0, 8)}]...`
+              : `第 ${round} 轮检测到用例回归（退出码 ${gate.exitCode}，INV 机制故障：${invPreflightFailed}）。LATS 树搜索自动回滚至检查点 [${activeCheckpoint.slice(0, 8)}]...`,
+          );
+          try {
+            await world.run("sh", [
+              "-c",
+              `git reset --hard ${activeCheckpoint} 2>/dev/null && git clean -fd 2>/dev/null || true`,
+            ]);
+          } catch {}
+          fixHistory.push({
+            round,
+            summary: isEn
+              ? `Rolled back Round ${round - 1} candidate due to regression`
+              : `因引入测试回归已回滚上一轮候选修复`,
+            modifiedPaths: [],
+            dimension: "INV",
+          });
+        }
+      }
+
       if (round < MAX_FIX_ROUNDS) {
+        // Snapshot clean state before applying fixer candidate
+        try {
+          const cpRes = await world.run("sh", [
+            "-c",
+            "git rev-parse --is-inside-work-tree >/dev/null 2>&1 && (git add -A && (git stash create || git rev-parse HEAD)) 2>/dev/null || true",
+          ]);
+          if (cpRes.exitCode === 0 && cpRes.stdout.trim()) {
+            activeCheckpoint = cpRes.stdout.trim().split("\n")[0];
+          }
+        } catch {}
+
         if (invPreflightFailed) {
           log(
             isEn
@@ -1181,11 +1270,19 @@ if (allWorkstreamsFailed) {
           });
         }
         lastSignature = signature;
+        lastExitCode = gate.exitCode;
+        lastWasInv = invPreflightFailed;
       }
     }
     if (lastFail) {
       gaps = [...executionFailureGaps, lastFail];
       checkEvidence = lastFail;
+    }
+    // Clean up synthesized test script if created
+    if (synthesizedTestScript) {
+      try {
+        await world.run("sh", ["-c", "rm -f verify_synth.sh 2>/dev/null || true"]);
+      } catch {}
     }
   } else {
     const verifier = agent(isEn ? "Independent Verifier" : "独立验收", {

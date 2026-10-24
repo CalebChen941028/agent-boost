@@ -100,7 +100,7 @@ Automatically detect the host agent runtime and execute the corresponding protoc
    - On consecutive identical signatures, escalates to the Root-Cause Diagnoser, which classifies the defect into **`INV`** (procedure, tool/runner invocation, build state) vs. **`DOM`** (domain logic, algorithmic edge cases) before minimal repair.
 9. **Independent 6-Criterion Diff Review & Yardstick Scoring (换人六维标尺量化评分)**:
    - Fresh Reviewer evaluates live workspace diffs against the Harness² 6-criterion yardstick: `DELIVERY`, `CONFORMANCE`, `FIDELITY`, `INTERNAL CONSISTENCY`, `OPERATIONAL FITNESS`, and `FINISH`.
-   - Computes quantitative **Yardstick Score** (`calculateYardstickScore`, 0–100 scale, pass threshold $\ge 80$).
+   - Computes quantitative **Yardstick Score** (`calculateYardstickScore`, 0–100 scale, pass threshold $\ge 85$).
    - Functional bugs, crashes, or contract violations are marked `high` severity and directly block success claims in `formatConclusion`.
 10. **Harness² Transferable `<experience>` Reflection & Lifelong Memory (终身经验沉淀)**:
     - Scribe extracts at most one generalizable `<experience>` cue (`formatExperienceEntry`), automatically filtering out `confounded` or `no_observed_effect` edits (`NO_ENTRY`), and appends valid cues to `.agent-boost/experiences.md` for future task runs.

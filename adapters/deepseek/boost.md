@@ -51,7 +51,7 @@ Execute the 5 phases strictly in order:
 ### Phase 4: `[Role: Independent Reviewer]` (Read-Only)
 - Inspect `git status --short` and `git diff` plus `fixHistory` against the **Harness² 6-Criterion Yardstick**:
   `DELIVERY`, `CONFORMANCE`, `FIDELITY`, `INTERNAL CONSISTENCY`, `OPERATIONAL FITNESS`, and `FINISH`.
-- Compute quantitative **Yardstick Score** (`calculateYardstickScore`, 0–100 scale, pass threshold $\ge 80$).
+- Compute quantitative **Yardstick Score** (`calculateYardstickScore`, 0–100 scale, pass threshold $\ge 85$).
 - Mark functional bugs, crashes, or unmet criteria as `high` severity.
 
 ### Phase 5: `[Role: Report Scribe & Lifelong Experience Reflector]`

@@ -141,7 +141,7 @@ npm test
 
 ## Trademark & Project Disclaimer
 
-Antigravity is a trademark of Google LLC. This project is an independent open-source contribution and is not affiliated with, sponsored by, or endorsed by Google LLC, Anthropic, OpenAI, or DeepSeek.
+Antigravity is a trademark of Google LLC. This project is an independent open-source contribution and is not affiliated with, sponsored by, or endorsed by Google LLC, Anthropic, OpenAI, DeepSeek, or WorkBuddy. All product names, logos, and brands are property of their respective owners.
 
 ---
 

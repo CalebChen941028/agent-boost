@@ -20,7 +20,7 @@ Boost is a runtime-agnostic multi-agent state machine designed for deep reasonin
   - **Stall-Triggered INV/DOM Diagnosis**: When consecutive failure/gap signatures match, escalates to the Root-Cause Diagnoser to separate **INV** (procedure, tool/runner invocation, build state) from **DOM** (domain logic, algorithmic edge cases) before minimal repair.
 - **Phase 4: Independent 6-Criterion Review & Quantitative Yardstick Scoring**:
   - Fresh Reviewer inspects live workspace diffs (`git status` / `git diff --stat`), workstream results, and `fixHistory` against the Harness² 6-criterion yardstick: `DELIVERY`, `CONFORMANCE`, `FIDELITY`, `INTERNAL CONSISTENCY`, `OPERATIONAL FITNESS`, and `FINISH`.
-  - Computes quantitative **Yardstick Score** (`calculateYardstickScore`, 0–100 scale, pass threshold $\ge 80$).
+  - Computes quantitative **Yardstick Score** (`calculateYardstickScore`, 0–100 scale, pass threshold $\ge 85$).
 - **Phase 5: Synthesis, Objective Conclusion & Lifelong Experience Reflection**:
   - Generates grounded Markdown report including Yardstick Score breakdown and extracts at most ONE transferable Harness² `<experience>` cue (or `NO_ENTRY` if `confounded` / `no_observed_effect`), persisting valid cues to `.agent-boost/experiences.md`.
   - Produces an objective conclusion (`formatConclusion`) reflecting failed workstreams, open verification gaps, Yardstick failures, and `high`-severity review findings.

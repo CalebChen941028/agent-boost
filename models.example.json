@@ -36,6 +36,11 @@
       "vendor": "minimax",
       "tier": "light"
     },
+    "mimo-v2.6-flash": {
+      "id": "opencode/mimo-v2.6-flash",
+      "vendor": "opencode",
+      "tier": "light"
+    },
     "claude-opus-5.5": {
       "id": "anthropic/claude-opus-5.5",
       "vendor": "anthropic",

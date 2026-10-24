@@ -223,6 +223,7 @@ export function getReportStyles() {
     }
     .stat-pass { color: var(--success); font-weight: 600; }
     .stat-fail { color: var(--danger); font-weight: 600; }
+    .stat-notrun { color: var(--text-sec); font-weight: 500; }
 
     /* Badges */
     .badge {
@@ -673,13 +674,20 @@ export function generateMultiModelReport(summaryA, summaryB) {
     const soloB = rB.solo || {};
     const boostB = rB.boost || {};
 
-    const statusBadge = (boostA.passed && boostB.passed)
+    const ranA = mapA.has(taskId);
+    const ranB = mapB.has(taskId);
+
+    const statusBadge = !ranA || !ranB
+      ? '<span class="badge badge-fail">NOT-RUN IN ' + escapeHtml(!ranA ? modelA : modelB) + '</span>'
+      : (boostA.passed && boostB.passed)
       ? '<span class="badge badge-pass">DUAL BOOST PASS</span>'
       : (boostA.passed || boostB.passed)
       ? '<span class="badge badge-boost">BOOST ADVANTAGE</span>'
       : '<span class="badge badge-fail">DUAL FAIL</span>';
 
-    const fmtStatus = (s) => s.passed
+    const fmtStatus = (s, ran) => !ran
+      ? '<span class="stat-notrun">NOT-RUN</span>'
+      : s.passed
       ? `<span class="stat-pass">PASS</span> (${s.groundExitCode ?? 0}/${s.yardstickScore ?? 0})`
       : `<span class="stat-fail">FAIL</span> (${s.groundExitCode ?? 1}/${s.yardstickScore ?? 0})`;
 
@@ -692,10 +700,10 @@ export function generateMultiModelReport(summaryA, summaryB) {
           <div class="task-sub">${escapeHtml(task.name)}</div>
         </td>
         <td><span class="pill-category">${escapeHtml(task.category || "General")}</span></td>
-        <td>${fmtStatus(soloA)}</td>
-        <td>${fmtStatus(boostA)}</td>
-        <td>${fmtStatus(soloB)}</td>
-        <td>${fmtStatus(boostB)}</td>
+        <td>${fmtStatus(soloA, ranA)}</td>
+        <td>${fmtStatus(boostA, ranA)}</td>
+        <td>${fmtStatus(soloB, ranB)}</td>
+        <td>${fmtStatus(boostB, ranB)}</td>
         <td>${statusBadge}</td>
       </tr>
       <tr id="${rowId}" class="task-detail-row" style="display: none;">
@@ -895,8 +903,13 @@ export function generateCrossModelMarkdown(summaryA, summaryB) {
     const bA = rA.boost || {};
     const sB = rB.solo || {};
     const bB = rB.boost || {};
-    const verdict = (bA.passed && bB.passed) ? "DUAL-PASS" : (bA.passed || bB.passed) ? "BOOST-VICTORY" : "DUAL-FAIL";
-    md += `| \`${id}\` | ${sA.passed ? "PASS" : "FAIL"} / ${bA.passed ? "PASS" : "FAIL"} | ${sB.passed ? "PASS" : "FAIL"} / ${bB.passed ? "PASS" : "FAIL"} | ${verdict} |\n`;
+    const ranA = mapA.has(id);
+    const ranB = mapB.has(id);
+    const cell = (s, b, ran) => ran ? `${s.passed ? "PASS" : "FAIL"} / ${b.passed ? "PASS" : "FAIL"}` : "NOT-RUN";
+    const verdict = !ranA || !ranB
+      ? "NOT-RUN"
+      : (bA.passed && bB.passed) ? "DUAL-PASS" : (bA.passed || bB.passed) ? "BOOST-VICTORY" : "DUAL-FAIL";
+    md += `| \`${id}\` | ${cell(sA, bA, ranA)} | ${cell(sB, bB, ranB)} | ${verdict} |\n`;
   }
 
   md += `\n- **Boost Pass@1**: ${modelA} ${aggA.boostPassed ?? 0}/${aggA.total ?? allIds.length} vs ${modelB} ${aggB.boostPassed ?? 0}/${aggB.total ?? allIds.length}\n`;

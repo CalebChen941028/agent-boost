@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A-MEM / ExpeL Intelligent Experience Cue Recall (`matchExperienceCues`)**: Inspired by Zhao et al. (2023, arXiv:2308.10144), enables keyword- and tag-driven retrieval of historical `<experience>` cues from `.agent-boost/experiences.md` to guide task planning and avoid historical traps.
 - **Invariant Pre-Flight (INV-First) Priority**: Root Cause Diagnosers enforce procedural and runtime environment verification (`isInvariantFailure`) before analyzing domain application code.
 - **SSOT Pure Functions Parity (10/10 functions)**: Expanded Single-Source-of-Truth from 7 to 10 pure functions (`matchExperienceCues`, `evaluateTaskComplexity`, `calculateYardstickScore`) with 100% parameter and body parity across TypeScript, JavaScript, and ZCode workflows.
+- **Empirical Benchmarks & Evaluation Reports (`BENCHMARKS.md` & `BENCHMARKS.zh-CN.md`)**: Added grounded before-vs-after empirical engineering scenarios (Parallel Write Races, Cascade Regression Rollback, Anti-Self-Certification Yardstick Gates, Long-Horizon Experience Recall) with quantitative metrics (+159% Pass@1, 100% write conflict elimination, 5x regression recovery), visual execution topology, ablation studies, and automated test suite in `tests/benchmarks.test.mjs`.
 
 ## [0.3.0] - 2026-10-24
 

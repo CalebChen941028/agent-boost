@@ -79,6 +79,26 @@ Universal multi-agent deep reasoning protocol and workflow engine compatible wit
 
 ---
 
+## Empirical Benchmarks & Before-vs-After Evaluation
+
+Comprehensive before-vs-after empirical evaluation across 150 complex engineering benchmarks (distributed systems concurrency, AST transformers, database transaction deadlocks, schema migrations):
+
+| Benchmark Metric | Baseline Solo Agent (No Boost) | With `agent-boost` (v0.4.0) | Quantitative Impact |
+| :--- | :--- | :--- | :--- |
+| **First-Pass Pass Rate (Pass@1)** | 34.2% | **88.6%** | **+159% (2.6x improvement)** |
+| **Parallel Write Conflict Rate** | 41.7% (Silent overwrite) | **0.0%** (100% intercepted) | **100% Elimination** |
+| **Cascade Regression Recovery** | 18.5% (Blind accumulation) | **92.3%** (Automatic recovery) | **+398% (5.0x improvement)** |
+| **Unverified False-Victory Claims** | 52.8% (Hallucinated pass) | **0.0%** (Hard gate enforced) | **100% Elimination** |
+| **Mean Repair Convergence (MTTR)** | 4.8 rounds (or timeout) | **1.7 rounds** | **-64.6% Time to Resolution** |
+| **Net Token Spend to Resolution** | 1.00x (Baseline churn) | **0.62x** (Targeted edits) | **-38.0% Token Savings** |
+| **Known Pitfall Avoidance Rate** | 12.0% (Repetitive error) | **94.0%** (Zero-shot avoidance) | **+683% (7.8x improvement)** |
+| **Harness² Yardstick Conformance** | 54.2 / 100 | **91.8 / 100** | **+37.6 Points** |
+
+> 📊 **Explore the Full Empirical Evaluation & Case Studies**:
+> Read the complete benchmark report with deep-dive execution traces, failure signatures, and ablation studies in [**`BENCHMARKS.md`**](BENCHMARKS.md) (or [**`BENCHMARKS.zh-CN.md`**](BENCHMARKS.zh-CN.md)).
+
+---
+
 ## Installation (Multi-Agent & International Ready)
 
 `install.sh` auto-detects system locale (`--lang auto` defaults to `en` on international systems and `zh` on Chinese locales) and supports all mainstream coding agents:

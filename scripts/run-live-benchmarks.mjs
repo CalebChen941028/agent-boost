@@ -78,7 +78,7 @@ const CONFIG = {
     "https://opencode.ai/zen/go/v1/chat/completions",
   model: process.env.LIVE_MODEL || "mimo-v2.6-flash",
   temperature: 0.2,
-  maxTokens: 6144, // mimo spends completion tokens on reasoning before content
+  maxTokens: 6144, // default ceiling; adaptive budget scales with task complexity
   plannerMaxTokens: 2048,
   judgeMaxTokens: 2048,
   requestTimeoutMs: 180_000,
@@ -87,6 +87,13 @@ const CONFIG = {
   sessionId: `agent-boost-live-${crypto.randomUUID().slice(0, 8)}`,
   userAgent: "agent-boost-live-benchmark/0.4.0",
   soloMaxAttempts: 3,
+};
+
+// Adaptive Test-Time Compute Allocation budgets (Option B)
+const TIER_TOKEN_BUDGETS = {
+  simple: 2048,
+  standard: 4096,
+  hard: 6144,
 };
 
 // ---------------------------------------------------------------------------
@@ -905,7 +912,7 @@ async function boostPhase1Plan(task, ws, records, log) {
   return { workstreams, complexity, conflictsIntercepted };
 }
 
-async function boostPhase2Execute(task, ws, workstreams, records) {
+async function boostPhase2Execute(task, ws, workstreams, records, maxTokens = CONFIG.maxTokens) {
   const ownership = new Map();
   for (const w of workstreams) for (const f of w.targetFiles) ownership.set(f, w.title);
   const interfaceContracts = (task.contracts || [])
@@ -930,7 +937,7 @@ async function boostPhase2Execute(task, ws, workstreams, records) {
       ],
       CONFIG.temperature,
       ENGINEER_SYSTEM,
-      { tag: `boost:${task.id}:exec:${w.title}` },
+      { tag: `boost:${task.id}:exec:${w.title}`, maxTokens },
     );
     records.push(call);
     if (!call.ok || !call.content) continue;
@@ -945,7 +952,7 @@ async function boostPhase2Execute(task, ws, workstreams, records) {
   }
 }
 
-async function boostPhase3VerifyAndRepair(task, ws, complexity, records, log, fixtureTests, fixtureSha, baselinePassingNames, mutableFiles) {
+async function boostPhase3VerifyAndRepair(task, ws, complexity, records, log, fixtureTests, fixtureSha, baselinePassingNames, mutableFiles, maxTokens = CONFIG.maxTokens) {
   const events = { rollbacks: 0, rollbackEvidence: [], synthUsed: false, repairRounds: 0, signatureShifts: 0 };
   const maxRounds = Math.max(1, complexity.maxRepairRounds);
   // LATS checkpoint semantics: the pristine fixture is the last known-good
@@ -1080,7 +1087,7 @@ async function boostPhase3VerifyAndRepair(task, ws, complexity, records, log, fi
       ],
       CONFIG.temperature,
       ENGINEER_SYSTEM,
-      { tag: `boost:${task.id}:repair:r${round}` },
+      { tag: `boost:${task.id}:repair:r${round}`, maxTokens },
     );
     records.push(repairCall);
     if (!repairCall.ok || !repairCall.content) break;
@@ -1125,9 +1132,10 @@ async function runBoostArm(task, ws, experienceStore, log, fixtureTests, baselin
   }
   const plan = await boostPhase1Plan(task, ws, records, log);
   events.conflictsIntercepted = plan.conflictsIntercepted;
+  const maxTokens = TIER_TOKEN_BUDGETS[plan.complexity.complexity] || CONFIG.maxTokens;
 
-  // Phase 2 — disjoint-ownership execution
-  await boostPhase2Execute(task, ws, plan.workstreams, records);
+  // Phase 2 — disjoint-ownership execution with adaptive token budget (Option B)
+  await boostPhase2Execute(task, ws, plan.workstreams, records, maxTokens);
 
   // Phase 3 — checkpoint, real tests, signature-scoped repair with rollback.
   // Repair scope covers every file a workstream owns (not just sourceFiles) —
@@ -1136,7 +1144,7 @@ async function runBoostArm(task, ws, experienceStore, log, fixtureTests, baselin
     ...new Set([...task.sourceFiles, ...plan.workstreams.flatMap((w) => w.targetFiles)]),
   ];
   const verified = await boostPhase3VerifyAndRepair(
-    task, ws, plan.complexity, records, log, fixtureTests, fixtureSha, baselinePassingNames, mutableFiles,
+    task, ws, plan.complexity, records, log, fixtureTests, fixtureSha, baselinePassingNames, mutableFiles, maxTokens,
   );
   events.rollbacks = verified.events.rollbacks;
   events.rollbackEvidence = verified.events.rollbackEvidence;
@@ -2032,6 +2040,168 @@ export const LIVE_TASKS = [
       });
     },
   },
+  {
+    id: "LIVE-CASCADE-EVENT-BUS",
+    name: "Multi-Module EventBus Async Migration with Synchronous Cascade Invariant",
+    origin: "Node.js EventEmitter / EventBus architectural refactor archetype (live)",
+    category: "Multi-File Cascade Regression",
+    scenario: "cascade-rollback",
+    experienceKeywords: "eventbus async emit migration synchronous handler downstream cascade invariant",
+    experienceDimension: "DOM",
+    sourceFiles: ["src/bus.js"],
+    testFiles: ["test/bus.test.mjs"],
+    fixtureHasTests: true,
+    expectedBaselineFails: 0,
+    soloSeesTests: true,
+    brief:
+      "Extend the central EventBus in src/bus.js by implementing emitAsync(event, ...args) returning a Promise,\n" +
+      "while strictly preserving the 100% synchronous execution contract of emit(event, ...args).\n\n" +
+      "Architecture & Downstream Context:\n" +
+      "Downstream services (e.g. auth-service) rely on bus.emit('user:login', session) executing synchronously to populate\n" +
+      "session.permissions immediately before validating the request. If emit() is converted to asynchronous or defers\n" +
+      "listener dispatch, downstream authentication breaks immediately (cascade regression).\n\n" +
+      "Requirements:\n" +
+      "  - Add emitAsync(event, ...args): invokes all registered listeners for event; if any returns a Promise, awaits it.\n" +
+      "    Resolves to an array containing results from all listeners (via Promise.all). If any listener throws or rejects, rejects with that error.\n" +
+      "  - Retain emit(event, ...args): MUST remain 100% synchronous; executes all listeners immediately and returns boolean.\n" +
+      "  - Synchronous baseline tests must keep passing without regression.",
+    fixture(ws) {
+      writeWorkspaceFiles(ws, {
+        "package.json": PKG_JSON,
+        "src/bus.js":
+          "export class EventBus {\n" +
+          "  constructor() {\n" +
+          "    this.listeners = new Map();\n" +
+          "  }\n\n" +
+          "  on(event, handler) {\n" +
+          "    if (!this.listeners.has(event)) this.listeners.set(event, []);\n" +
+          "    this.listeners.get(event).push(handler);\n" +
+          "    return () => this.off(event, handler);\n" +
+          "  }\n\n" +
+          "  off(event, handler) {\n" +
+          "    const list = this.listeners.get(event);\n" +
+          "    if (!list) return false;\n" +
+          "    const idx = list.indexOf(handler);\n" +
+          "    if (idx === -1) return false;\n" +
+          "    list.splice(idx, 1);\n" +
+          "    return true;\n" +
+          "  }\n\n" +
+          "  emit(event, ...args) {\n" +
+          "    const list = this.listeners.get(event);\n" +
+          "    if (!list || list.length === 0) return false;\n" +
+          "    for (const fn of [...list]) {\n" +
+          "      fn(...args);\n" +
+          "    }\n" +
+          "    return true;\n" +
+          "  }\n\n" +
+          "  async emitAsync(event, ...args) {\n" +
+          "    // BUG: emitAsync is not yet implemented\n" +
+          '    throw new Error("not implemented");\n' +
+          "  }\n" +
+          "}\n",
+        "test/bus.test.mjs":
+          'import test from "node:test";\n' +
+          'import assert from "node:assert/strict";\n' +
+          'import { EventBus } from "../src/bus.js";\n\n' +
+          'test("synchronous emit executes listeners immediately before returning", () => {\n' +
+          "  const bus = new EventBus();\n" +
+          "  const log = [];\n" +
+          '  bus.on("ping", () => log.push("a"));\n' +
+          '  bus.on("ping", () => log.push("b"));\n' +
+          '  const res = bus.emit("ping");\n' +
+          "  assert.equal(res, true);\n" +
+          '  assert.deepEqual(log, ["a", "b"]);\n' +
+          "});\n\n" +
+          'test("auth-service synchronous session permissions mutation works", () => {\n' +
+          "  const bus = new EventBus();\n" +
+          "  const session = { user: \"alice\", permissions: [] };\n" +
+          '  bus.on("user:login", (s) => {\n' +
+          '    s.permissions.push("read", "write");\n' +
+          "  });\n" +
+          '  bus.emit("user:login", session);\n' +
+          '  assert.deepEqual(session.permissions, ["read", "write"]);\n' +
+          "});\n\n" +
+          'test("emitAsync awaits asynchronous promise-returning listeners", async () => {\n' +
+          "  const bus = new EventBus();\n" +
+          "  const log = [];\n" +
+          '  bus.on("compute", async (val) => {\n' +
+          "    await new Promise((r) => setTimeout(r, 20));\n" +
+          "    log.push(val * 2);\n" +
+          "    return val * 2;\n" +
+          "  });\n" +
+          '  bus.on("compute", (val) => {\n' +
+          "    log.push(val + 10);\n" +
+          "    return val + 10;\n" +
+          "  });\n" +
+          '  const results = await bus.emitAsync("compute", 5);\n' +
+          "  assert.deepEqual(results, [10, 15]);\n" +
+          "  assert.equal(log.length, 2);\n" +
+          "});\n",
+      });
+    },
+  },
+  {
+    id: "LIVE-SQLITE-SCHEMA-MIGRATION",
+    name: "Multi-Repo Query Executor Selective Soft-Delete Migration",
+    origin: "ORM / SQL Query Builder migration archetype (live)",
+    category: "Multi-File Cascade Regression",
+    scenario: "cascade-rollback",
+    experienceKeywords: "query builder soft delete table awareness cascade regression sql column missing",
+    experienceDimension: "DOM",
+    sourceFiles: ["src/query.js"],
+    testFiles: ["test/query.test.mjs"],
+    fixtureHasTests: true,
+    expectedBaselineFails: 0,
+    soloSeesTests: true,
+    brief:
+      "Enhance the SQL query compiler in src/query.js: export function compileSelect(table, conditions, options = {}).\n\n" +
+      "Architecture Context:\n" +
+      "The application is introducing soft-delete filtering across specific repositories:\n" +
+      "  - Tables WITH soft-delete: ['users', 'articles', 'comments'].\n" +
+      "  - Tables WITHOUT soft-delete: ['orders', 'audit_logs', 'sessions'].\n\n" +
+      "Requirements:\n" +
+      "  - If options.includeDeleted is false (or omitted):\n" +
+      "    - When table is in ['users', 'articles', 'comments'], the query MUST append 'deleted_at IS NULL' to the WHERE conditions.\n" +
+      "    - When table is NOT in that list (e.g. 'orders', 'audit_logs'), it MUST NEVER append 'deleted_at IS NULL' (as those tables lack that column).\n" +
+      "  - If options.includeDeleted is true: never append 'deleted_at IS NULL' regardless of table.\n" +
+      "  - If conditions are provided, join all WHERE clauses with ' AND '.\n" +
+      "  - Baseline queries on non-soft-delete tables must keep working without regression.",
+    fixture(ws) {
+      writeWorkspaceFiles(ws, {
+        "package.json": PKG_JSON,
+        "src/query.js":
+          "const SOFT_DELETE_TABLES = new Set(['users', 'articles', 'comments']);\n\n" +
+          "export function compileSelect(table, conditions = {}, options = {}) {\n" +
+          "  const parts = [];\n" +
+          "  for (const [key, val] of Object.entries(conditions)) {\n" +
+          "    parts.push(typeof val === 'string' ? `${key} = '${val}'` : `${key} = ${val}`);\n" +
+          "  }\n" +
+          "  // BUG: soft-delete filter is not implemented for soft-delete tables\n" +
+          "  const where = parts.length > 0 ? ` WHERE ${parts.join(' AND ')}` : '';\n" +
+          "  return `SELECT * FROM ${table}${where}`;\n" +
+          "}\n",
+        "test/query.test.mjs":
+          'import test from "node:test";\n' +
+          'import assert from "node:assert/strict";\n' +
+          'import { compileSelect } from "../src/query.js";\n\n' +
+          'test("compiles simple select on non-soft-delete tables without deleted_at", () => {\n' +
+          '  const sql = compileSelect("orders", { status: "pending" });\n' +
+          '  assert.equal(sql, "SELECT * FROM orders WHERE status = \'pending\'");\n' +
+          '  assert.equal(sql.includes("deleted_at"), false);\n' +
+          "});\n\n" +
+          'test("combines multiple existing where conditions with AND", () => {\n' +
+          '  const sql = compileSelect("audit_logs", { user_id: 1, action: "login" });\n' +
+          '  assert.equal(sql, "SELECT * FROM audit_logs WHERE user_id = 1 AND action = \'login\'");\n' +
+          "});\n\n" +
+          'test("soft-delete tables automatically filter deleted_at IS NULL when includeDeleted is false", () => {\n' +
+          '  const sql = compileSelect("users", { role: "admin" });\n' +
+          '  assert.equal(sql, "SELECT * FROM users WHERE role = \'admin\' AND deleted_at IS NULL");\n' +
+          '  const sqlAll = compileSelect("users", { role: "admin" }, { includeDeleted: true });\n' +
+          '  assert.equal(sqlAll, "SELECT * FROM users WHERE role = \'admin\'");\n' +
+          "});\n",
+      });
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -2254,6 +2424,10 @@ export async function runLiveBenchmarks(options = {}) {
   const log = silent ? () => {} : console.log;
   const taskFilter = options.tasks || null;
   const tasks = taskFilter ? LIVE_TASKS.filter((t) => taskFilter.includes(t.id)) : LIVE_TASKS;
+
+  if (options.model) {
+    CONFIG.model = options.model;
+  }
 
   API_KEY = await resolveApiKey();
   if (!API_KEY) {
@@ -2541,6 +2715,52 @@ const CANONICAL_FIXES = {
     "    return promise;\n" +
     "  }\n" +
     "}\n",
+  "LIVE-CASCADE-EVENT-BUS":
+    "export class EventBus {\n" +
+    "  constructor() {\n" +
+    "    this.listeners = new Map();\n" +
+    "  }\n\n" +
+    "  on(event, handler) {\n" +
+    "    if (!this.listeners.has(event)) this.listeners.set(event, []);\n" +
+    "    this.listeners.get(event).push(handler);\n" +
+    "    return () => this.off(event, handler);\n" +
+    "  }\n\n" +
+    "  off(event, handler) {\n" +
+    "    const list = this.listeners.get(event);\n" +
+    "    if (!list) return false;\n" +
+    "    const idx = list.indexOf(handler);\n" +
+    "    if (idx === -1) return false;\n" +
+    "    list.splice(idx, 1);\n" +
+    "    return true;\n" +
+    "  }\n\n" +
+    "  emit(event, ...args) {\n" +
+    "    const list = this.listeners.get(event);\n" +
+    "    if (!list || list.length === 0) return false;\n" +
+    "    for (const fn of [...list]) {\n" +
+    "      fn(...args);\n" +
+    "    }\n" +
+    "    return true;\n" +
+    "  }\n\n" +
+    "  async emitAsync(event, ...args) {\n" +
+    "    const list = this.listeners.get(event);\n" +
+    "    if (!list || list.length === 0) return [];\n" +
+    "    const promises = list.map((fn) => Promise.resolve().then(() => fn(...args)));\n" +
+    "    return Promise.all(promises);\n" +
+    "  }\n" +
+    "}\n",
+  "LIVE-SQLITE-SCHEMA-MIGRATION":
+    "const SOFT_DELETE_TABLES = new Set(['users', 'articles', 'comments']);\n\n" +
+    "export function compileSelect(table, conditions = {}, options = {}) {\n" +
+    "  const parts = [];\n" +
+    "  for (const [key, val] of Object.entries(conditions)) {\n" +
+    "    parts.push(typeof val === 'string' ? `${key} = '${val}'` : `${key} = ${val}`);\n" +
+    "  }\n" +
+    "  if (!options.includeDeleted && SOFT_DELETE_TABLES.has(table)) {\n" +
+    "    parts.push('deleted_at IS NULL');\n" +
+    "  }\n" +
+    "  const where = parts.length > 0 ? ` WHERE ${parts.join(' AND ')}` : '';\n" +
+    "  return `SELECT * FROM ${table}${where}`;\n" +
+    "}\n",
 };
 
 const CANONICAL_SEMVER_HYPHEN_PATCH =
@@ -2696,6 +2916,8 @@ function countTargetTests(task) {
     "LIVE-REDUX-STRUCTURAL-SHARING": 1,
     "LIVE-GRAPH-CYCLE-DEADLOCK": 1,
     "LIVE-CACHE-STAMPEDE-MUTEX": 1,
+    "LIVE-CASCADE-EVENT-BUS": 1,
+    "LIVE-SQLITE-SCHEMA-MIGRATION": 1,
   };
   return map[task.id] ?? 0;
 }
@@ -2705,10 +2927,11 @@ function countTargetTests(task) {
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const out = { json: null, html: null, tasks: null, selftest: false, help: false };
+  const out = { json: null, html: null, tasks: null, selftest: false, help: false, model: null };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--json") out.json = argv[++i];
     else if (argv[i] === "--html") out.html = argv[++i];
+    else if (argv[i] === "--model") out.model = argv[++i];
     else if (argv[i] === "--offline-selftest") out.selftest = true;
     else if (argv[i] === "--tasks") out.tasks = String(argv[++i] || "").split(",").map((s) => s.trim()).filter(Boolean);
     else if (argv[i] === "--help" || argv[i] === "-h") out.help = true;
@@ -2726,8 +2949,9 @@ Usage:
 
 Options:
   --help, -h            Show this help message
-  --offline-selftest    Run 36 offline harness validation checks (no API calls)
+  --offline-selftest    Run 42 offline harness validation checks (no API calls)
   --tasks <id1,id2>     Run specific tasks by ID (comma-separated)
+  --model <name>        Override model name (e.g. deepseek-v4.1-flash)
   --json <path>         Write results summary JSON to file
   --html <path>         Write interactive HTML report to file
 `);
@@ -2735,7 +2959,7 @@ Options:
   } else if (args.selftest) {
     offlineSelftest();
   } else {
-    runLiveBenchmarks({ tasks: args.tasks })
+    runLiveBenchmarks({ tasks: args.tasks, model: args.model })
       .then((summary) => {
         if (!summary) return;
         if (args.json) {

@@ -11,7 +11,8 @@
     "benchmark": "node scripts/run-live-benchmarks.mjs",
     "benchmark:live": "node scripts/run-live-benchmarks.mjs",
     "benchmark:selftest": "node scripts/run-live-benchmarks.mjs --offline-selftest",
-    "benchmark:report": "node scripts/generate-benchmark-report.mjs"
+    "benchmark:report": "node scripts/generate-benchmark-report.mjs",
+    "benchmark:compare": "node scripts/generate-benchmark-report.mjs --compare"
   },
   "keywords": [
     "multi-agent",

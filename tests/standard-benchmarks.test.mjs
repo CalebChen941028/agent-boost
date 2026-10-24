@@ -47,7 +47,7 @@ test("Standard Benchmark Suite: Mode B (With agent-boost v0.4.0) resolves all 12
 });
 
 test("Standard Benchmark Suite: Full runner execution and aggregation matrix", async () => {
-  const summary = await runAllBenchmarks();
+  const summary = await runAllBenchmarks({ silent: true });
   assert.equal(summary.total, 12);
   assert.equal(summary.baselinePassed, 0, "Baseline solo agent pass rate must be 0/12 on hard multi-agent traps");
   assert.equal(summary.boostPassed, 12, "agent-boost v0.4.0 must achieve 12/12 (100%) pass rate");

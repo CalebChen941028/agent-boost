@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Signature Timing Normalization & Conflict URI Handling**: Hardened `computeFailureSignature` to normalize durations with whitespace (e.g. `142.5 ms` vs `34.2ms`), preventing false signature divergence during stall detection; upgraded `detectTargetFileConflicts` to normalize `file://` URIs and leading slashes; enhanced LATS rollback in `boost.dwf.ts` to detect regressions when test failure counts increase across rounds.
 
+### Removed
+- **Legacy Simulated Benchmark Suite (`tests/benchmarks.test.mjs`)**: Purged obsolete 4-scenario mock test file, consolidating all verification into three canonical, production-grade test suites: `tests/verify-gate.test.mjs` (24 SSOT pure function gate tests), `tests/dwf-workflow.test.mjs` (13 DWF state machine & GLM-5.3 tiering tests), and `tests/standard-benchmarks.test.mjs` (7 canonical benchmark assertion tests, 44 unit tests total).
+
 ## [0.3.0] - 2026-10-24
 
 ### Added

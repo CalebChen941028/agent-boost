@@ -343,11 +343,13 @@ npm run benchmark
 # 直接执行
 node scripts/run-benchmarks.mjs
 
-# SSOT 一致性构建校验 + 单元测试 + 基准断言
+# SSOT 一致性构建校验 + 3 套测试共 44 项单元测试
 npm test
 
-# 仅基准断言
-node --test tests/standard-benchmarks.test.mjs
+# 分项测试套件
+node --test tests/standard-benchmarks.test.mjs  # 12 项权威基准断言
+node --test tests/dwf-workflow.test.mjs         # DWF 状态机与模型分层调度测试
+node --test tests/verify-gate.test.mjs          # SSOT 纯函数核心门禁测试
 ```
 
 runner 仅在 12 项 boost 任务全部通过时以 0 退出，可直接接入 CI。

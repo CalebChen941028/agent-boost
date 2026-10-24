@@ -344,11 +344,13 @@ npm run benchmark
 # Direct invocation
 node scripts/run-benchmarks.mjs
 
-# SSOT parity build check + unit tests + benchmark assertions
+# SSOT parity build check + 44 unit tests across all 3 suites
 npm test
 
-# Benchmark assertions only
-node --test tests/standard-benchmarks.test.mjs
+# Focused test suites
+node --test tests/standard-benchmarks.test.mjs  # 12 canonical task assertions
+node --test tests/dwf-workflow.test.mjs         # DWF state machine & model tiering
+node --test tests/verify-gate.test.mjs          # SSOT pure function gatekeeper tests
 ```
 
 The runner exits 0 only when all 12 boost-arm tasks pass, so it drops into CI unchanged.

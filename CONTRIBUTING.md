@@ -14,8 +14,8 @@ Thank you for contributing to `agent-boost`!
 3. **Clean Room & Privacy Compliance**: Never commit personal API keys, `models.local.json`, internal provider gateway URLs, or proprietary company identifiers.
 4. **Verification Commands**:
    ```bash
-   node scripts/build.mjs
-   node --test tests/verify-gate.test.mjs
+   npm test
+   npm run benchmark
    ```
 
 ---
@@ -30,6 +30,6 @@ Thank you for contributing to `agent-boost`!
 3. **开源合规与隐私保护**：严禁提交个人密钥、`models.local.json`、内部私有网关前缀或未授权的专有标识。
 4. **本地验证命令**：
    ```bash
-   node scripts/build.mjs
-   node --test tests/verify-gate.test.mjs
+   npm test
+   npm run benchmark
    ```

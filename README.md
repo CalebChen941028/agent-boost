@@ -67,7 +67,7 @@ Universal multi-agent deep reasoning protocol and workflow engine compatible wit
 
 ---
 
-## Key Capabilities in v0.4.0 (Test-Time Compute, LATS Rollback & Yardstick Scoring)
+## Key Capabilities in v0.4.x (Adaptive Compute, LATS Rollback, Cross-Model Benchmark & Yardstick Scoring)
 
 - **Dynamic Test-Time Compute Allocation (`evaluateTaskComplexity`)**: Dynamically allocates compute budget based on task complexity, prompt length, and modified file count across `simple` (1 workstream, 1 repair round), `standard` (2–3 workstreams, 3 rounds), and `hard` (3–5 workstreams, 5 rounds) tiers.
 - **LATS Regression Rollback & Git Checkpoints**: Takes an automated git snapshot before each repair round. If a repair candidate escalates test failures or introduces regressions, the tree search automatically rolls back (`git reset --hard`).

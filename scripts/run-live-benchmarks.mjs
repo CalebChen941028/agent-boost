@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * LIVE API End-to-End Benchmark Runner for agent-boost (v0.4.0)
- * Comparison frame: Solo mimo-v2.6-flash (single model, no tools)
- *                 vs mimo-v2.6-flash + agent-boost v0.4.0 (model + five-phase toolchain)
+ * LIVE API End-to-End Benchmark Runner for agent-boost (v0.4.1)
+ * Comparison frame: Solo model (single model, no tools)
+ *                 vs model + agent-boost v0.4.1 (model + five-phase toolchain)
  *
  * Harness nature: 100% live evaluation. Every code artifact in this report is
  * produced by real HTTP calls to the OpenCode Zen gateway
@@ -85,7 +85,7 @@ const CONFIG = {
   httpRetries: 3, // network error / 429 / 5xx
   retryBackoffMs: [3000, 9000],
   sessionId: `agent-boost-live-${crypto.randomUUID().slice(0, 8)}`,
-  userAgent: "agent-boost-live-benchmark/0.4.0",
+  userAgent: "agent-boost-live-benchmark/0.4.1",
   soloMaxAttempts: 3,
 };
 
@@ -2339,7 +2339,7 @@ function fmtTokens(n) {
 
 function printHeader(log) {
   log("=".repeat(80));
-  log("  agent-boost v0.4.0 LIVE API End-to-End Benchmark Harness");
+  log("  agent-boost v0.4.1 LIVE API End-to-End Benchmark Harness");
   log(`  Endpoint: ${CONFIG.endpoint}`);
   log(`  Model:    ${CONFIG.model} (temperature ${CONFIG.temperature})`);
   log(`  Session:  ${CONFIG.sessionId}   Run started: ${new Date().toISOString()}`);

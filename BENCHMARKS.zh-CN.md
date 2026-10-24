@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/CalebChen941028/agent-boost/actions/workflows/ci.yml/badge.svg)](https://github.com/CalebChen941028/agent-boost/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version: 0.4.0](https://img.shields.io/badge/version-0.4.0-green.svg)](VERSION)
+[![Version: 0.4.1](https://img.shields.io/badge/version-0.4.1-green.svg)](VERSION)
 
 [English](BENCHMARKS.md) | [简体中文](BENCHMARKS.zh-CN.md)
 

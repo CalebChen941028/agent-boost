@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-10-25
+
+### Added
+- **Expanded 12-Task Live API Suite & 42-Check Offline Harness (`scripts/run-live-benchmarks.mjs`, `npm run benchmark:selftest`)**: Added Task 11 (`LIVE-CASCADE-EVENT-BUS` - Multi-Module EventBus Async Migration with Synchronous Cascade Invariant) and Task 12 (`LIVE-SQLITE-SCHEMA-MIGRATION` - Selective Soft-Delete Migration with Whitelist Constraints). Expanded zero-spend offline selftest from 36 to 42 automated checks.
+- **Adaptive CoT Token Budgeting (`TIER_TOKEN_BUDGETS`)**: Introduced dynamic test-time compute token budgeting mapping task complexity tiers (`simple`: 2048, `standard`: 4096, `hard`: 6144) to Phase 2 execution and Phase 3 repair calls. Prevents runaway reasoning loops on deep-thinking models, reducing total token consumption below bare models (0.989x on `deepseek-v4.1-flash`) and cutting average call latency by 52% (16.5s → 8.5s).
+- **SVG Execution Timeline Profiles (`renderExecutionTimelineSvg`)**: Apple-style SVG Gantt/timeline bars embedded in HTML report detail rows, visualizing wall-clock execution duration, attempts, and API call latency proportions.
+- **Cross-Model Live API Benchmark & Comparison (`npm run benchmark:compare`, `generateMultiModelReport`)**: Added `--model <name>` CLI support for dynamic benchmark execution, and automated side-by-side cross-model reporting comparing `mimo-v2.6-flash` and `deepseek-v4.1-flash`.
+- **Interactive Report Preview Switcher (`adapters/zcode/report-preview.html`)**: Added a drop-down selector in the ZCode preview panel to switch between default latest run, cross-model comparison, deepseek 12-task report, and tier-budget reports.
+
+### Fixed
+- **Cross-Model Absent Task Representation**: Tasks run in only one model arm now display neutral `NOT-RUN` status and badges in cross-model HTML and Markdown reports instead of false failures or erroneous victory badges.
+- **Report Generator Default Run Resolution**: Automatically selects the newest live-run JSON by mtime, preventing stale reports from being regenerated on bare `npm run benchmark:report`.
+- **Token Budget Transparency**: Recorded applied per-task `tokenBudget` in live-run results JSON for transparent auditing.
+
 ## [0.4.0] - 2026-10-24
 
 ### Added

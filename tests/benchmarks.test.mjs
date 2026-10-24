@@ -69,6 +69,29 @@ test("Benchmark Scenario A: Parallel write race conditions are deterministically
   ];
   const zeroConflicts = detectTargetFileConflicts(coordinatedWorkstreams);
   assert.equal(zeroConflicts.length, 0, "Disjoint targetFiles guarantee zero write clobbering");
+
+  // Edge Case A2: Path representations with leading slashes, backslashes, and file:// URIs must still trigger conflict
+  const pathVariantWorkstreams = [
+    {
+      title: "POSIX Relative",
+      kind: "code",
+      targetFiles: ["src/server.ts"],
+    },
+    {
+      title: "POSIX Leading Slash",
+      kind: "code",
+      targetFiles: ["/src/server.ts"],
+    },
+    {
+      title: "File URI Scheme",
+      kind: "code",
+      targetFiles: ["file:///src/server.ts"],
+    },
+  ];
+  const uriConflicts = detectTargetFileConflicts(pathVariantWorkstreams);
+  assert.equal(uriConflicts.length, 1, "Must detect conflict across relative, leading-slash, and file:// URI representations");
+  assert.equal(uriConflicts[0].file, "src/server.ts");
+  assert.equal(uriConflicts[0].workstreams.length, 3);
 });
 
 test("Benchmark Scenario B: Cascade regression signature shift triggers LATS rollback, stall triggers INV/DOM diagnosis", () => {
@@ -113,6 +136,20 @@ test("Benchmark Scenario B: Cascade regression signature shift triggers LATS rol
     initialSig,
     stalledSig,
     "Volatile runtime lines normalize to identical signature, triggering stall detection & INV/DOM diagnosis",
+  );
+
+  // Candidate Fix 3 (Stalled fix with volatile whitespace in timing outputs: e.g. "142.5 ms" vs "34.2ms")
+  const stalledWhitespaceTimingFailure = `
+    PostgresError: deadlock detected
+    DETAIL: Process 9811 waits for ExclusiveLock on transaction 9410; blocked by process 9812.
+    at /Users/dev/workspace/src/db/transaction.ts:48:15 (pid: 99182 in 142.5 ms)
+    FAIL tests/concurrency.test.ts (1 failed, 15 passed)
+  `;
+  const stalledWhitespaceSig = computeFailureSignature(stalledWhitespaceTimingFailure);
+  assert.equal(
+    initialSig,
+    stalledWhitespaceSig,
+    "Timing outputs with whitespace (142.5 ms) must normalize to identical signature as 34.2ms to ensure stall detection",
   );
 });
 

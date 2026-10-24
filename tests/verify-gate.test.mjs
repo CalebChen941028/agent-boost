@@ -50,10 +50,21 @@ TAP version 13
     not ok 1 - test failed
 `;
 
+  const runnerOutput3 = `
+> my-pkg@1.0.0 test
+TAP version 13
+# Subtest: test suite
+    at /var/jenkins/workspace/repo/src/index.js:205:99 (pid: 99881 in 98.2 ms)
+    AssertionError [ERR_ASSERTION]: expected 200 == 500 at 0x7faab9876543
+    not ok 1 - test failed
+`;
+
   const sig1 = computeFailureSignature(runnerOutput1);
   const sig2 = computeFailureSignature(runnerOutput2);
+  const sig3 = computeFailureSignature(runnerOutput3);
 
   assert.equal(sig1, sig2, "Volatile paths, pids, durations, and addresses must normalize to the same signature");
+  assert.equal(sig1, sig3, "Durations with whitespace (98.2 ms vs 14.5ms) must normalize to identical signature");
 });
 
 test("computeFailureSignature distinguishes different failures including HTTP status codes", () => {
@@ -332,21 +343,28 @@ test("detectTargetFileConflicts handles backslashes, multiple slashes, and case 
       kind: "code",
       targetFiles: ["SRC/App.TS", "././src/nested.ts"],
     },
+    {
+      title: "URI and leading slash",
+      kind: "code",
+      targetFiles: ["file:///src/app.ts", "/src/utils/helper.ts"],
+    },
   ];
 
   const conflicts = detectTargetFileConflicts(workstreams);
   assert.equal(conflicts.length, 3);
 
   const appConflict = conflicts.find((c) => c.file.toLowerCase() === "src/app.ts");
-  assert.ok(appConflict, "Conflict must be detected for src/app.ts despite backslashes and case");
-  assert.equal(appConflict.workstreams.length, 3);
+  assert.ok(appConflict, "Conflict must be detected for src/app.ts despite backslashes, case, and file:// URIs");
+  assert.equal(appConflict.workstreams.length, 4);
   assert.ok(appConflict.workstreams.includes("Windows paths"));
   assert.ok(appConflict.workstreams.includes("POSIX paths"));
   assert.ok(appConflict.workstreams.includes("Case variation"));
+  assert.ok(appConflict.workstreams.includes("URI and leading slash"));
 
   const helperConflict = conflicts.find((c) => c.file.toLowerCase() === "src/utils/helper.ts");
-  assert.ok(helperConflict, "Conflict must be detected for multiple/trailing slashes");
-  assert.equal(helperConflict.workstreams.length, 2);
+  assert.ok(helperConflict, "Conflict must be detected for multiple/trailing slashes and leading slash");
+  assert.equal(helperConflict.workstreams.length, 3);
+  assert.ok(helperConflict.workstreams.includes("URI and leading slash"));
 
   const nestedConflict = conflicts.find((c) => c.file.toLowerCase() === "src/nested.ts");
   assert.ok(nestedConflict, "Conflict must be detected for .//, .\\\\\\, and ././ prefix variations");

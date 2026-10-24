@@ -73,8 +73,8 @@ export function computeFailureSignature(output) {
       .replace(/([a-zA-Z0-9_.\-]+\.(?:[a-zA-Z0-9]+)):\d+(?::\d+)?/g, "PATH:LINE")
       // Standalone line/col numbers
       .replace(/:\d+:\d+/g, ":LINE:COL")
-      // Durations / timings (e.g. 12.34ms, 1.2s)
-      .replace(/\b\d+(?:\.\d+)?(?:ms|s|m)\b/g, "DURATION")
+      // Durations / timings (e.g. 12.34ms, 1.2s, 34.2 ms, 2 min)
+      .replace(/\b\d+(?:\.\d+)?\s*(?:ms|s|m|min)\b/g, "DURATION")
       // Generic timestamps (ISO / date-time)
       .replace(/\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?/g, "TIMESTAMP")
       // Standalone numbers >= 4 digits that might be pids, ports, or row counts
@@ -113,8 +113,9 @@ export function detectTargetFileConflicts(workstreams = []) {
     for (const rawFile of ws.targetFiles || []) {
       const normalized = String(rawFile || "")
         .trim()
+        .replace(/^file:\/\//i, "")
         .replace(/\\/g, "/")
-        .replace(/^(?:\.\/+)+/, "")
+        .replace(/^(?:\.\/+|\/)+/, "")
         .replace(/\/+/g, "/")
         .replace(/\/+$/, "")
         .trim();

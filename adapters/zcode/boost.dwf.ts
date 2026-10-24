@@ -189,8 +189,8 @@ export function computeFailureSignature(output: string): string {
       .replace(/([a-zA-Z0-9_.\-]+\.(?:[a-zA-Z0-9]+)):\d+(?::\d+)?/g, "PATH:LINE")
       // Standalone line/col numbers
       .replace(/:\d+:\d+/g, ":LINE:COL")
-      // Durations / timings (e.g. 12.34ms, 1.2s)
-      .replace(/\b\d+(?:\.\d+)?(?:ms|s|m)\b/g, "DURATION")
+      // Durations / timings (e.g. 12.34ms, 1.2s, 34.2 ms, 2 min)
+      .replace(/\b\d+(?:\.\d+)?\s*(?:ms|s|m|min)\b/g, "DURATION")
       // Generic timestamps (ISO / date-time)
       .replace(/\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?/g, "TIMESTAMP")
       // Standalone numbers >= 4 digits that might be pids, ports, or row counts
@@ -226,8 +226,9 @@ export function detectTargetFileConflicts(workstreams: WorkstreamLike[] = []): F
     for (const rawFile of ws.targetFiles || []) {
       const normalized = String(rawFile || "")
         .trim()
+        .replace(/^file:\/\//i, "")
         .replace(/\\/g, "/")
-        .replace(/^(?:\.\/+)+/, "")
+        .replace(/^(?:\.\/+|\/)+/, "")
         .replace(/\/+/g, "/")
         .replace(/\/+$/, "")
         .trim();
@@ -1144,7 +1145,15 @@ if (allWorkstreamsFailed) {
     let lastSignature = "";
     let lastExitCode = 0;
     let lastWasInv = false;
+    let lastFailCount = 0;
     let activeCheckpoint = "";
+
+    const countFailures = (text: string): number => {
+      const countMatch = text.match(/(\d+)\s+failed/i);
+      if (countMatch) return parseInt(countMatch[1], 10);
+      const failLines = (text.match(/(?:^|\n)\s*(?:FAIL|not ok)\b/gi) || []).length;
+      return failLines;
+    };
 
     for (let round = 1; round <= MAX_FIX_ROUNDS; round++) {
       const gate = await world.run("sh", ["-c", effectiveVerifyCommand]);
@@ -1163,6 +1172,7 @@ if (allWorkstreamsFailed) {
 
       // B3: normalized failure signature over tail 20 lines
       const signature = computeFailureSignature(failOut);
+      const currentFailCount = countFailures(failOut);
 
       // Invariant Pre-flight check (INV-first)
       const invPreflightFailed = isInvariantFailure(failOut, gate.exitCode);
@@ -1171,12 +1181,13 @@ if (allWorkstreamsFailed) {
       if (round > 1 && activeCheckpoint) {
         const isRegression =
           (invPreflightFailed && !lastWasInv) ||
-          (gate.exitCode > lastExitCode && gate.exitCode !== 0);
+          (gate.exitCode > lastExitCode && gate.exitCode !== 0) ||
+          (currentFailCount > lastFailCount && lastFailCount > 0);
         if (isRegression) {
           log(
             isEn
-              ? `Regression detected in Round ${round} (exit code ${gate.exitCode}, INV break: ${invPreflightFailed}). LATS rolling back to checkpoint [${activeCheckpoint.slice(0, 8)}]...`
-              : `第 ${round} 轮检测到用例回归（退出码 ${gate.exitCode}，INV 机制故障：${invPreflightFailed}）。LATS 树搜索自动回滚至检查点 [${activeCheckpoint.slice(0, 8)}]...`,
+              ? `Regression detected in Round ${round} (failure count ${lastFailCount} -> ${currentFailCount}, exit code ${gate.exitCode}, INV break: ${invPreflightFailed}). LATS rolling back to checkpoint [${activeCheckpoint.slice(0, 8)}]...`
+              : `第 ${round} 轮检测到用例回归（失败数扩散：${lastFailCount} -> ${currentFailCount}，退出码 ${gate.exitCode}，INV 机制故障：${invPreflightFailed}）。LATS 树搜索自动回滚至检查点 [${activeCheckpoint.slice(0, 8)}]...`,
           );
           try {
             await world.run("sh", [
@@ -1272,6 +1283,7 @@ if (allWorkstreamsFailed) {
         lastSignature = signature;
         lastExitCode = gate.exitCode;
         lastWasInv = invPreflightFailed;
+        lastFailCount = currentFailCount;
       }
     }
     if (lastFail) {

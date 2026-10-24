@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SSOT Pure Functions Parity (10/10 functions)**: Expanded Single-Source-of-Truth from 7 to 10 pure functions (`matchExperienceCues`, `evaluateTaskComplexity`, `calculateYardstickScore`) with 100% parameter and body parity across TypeScript, JavaScript, and ZCode workflows.
 - **Empirical Benchmarks & Evaluation Reports (`BENCHMARKS.md` & `BENCHMARKS.zh-CN.md`)**: Added grounded before-vs-after empirical engineering scenarios (Parallel Write Races, Cascade Regression Rollback, Anti-Self-Certification Yardstick Gates, Long-Horizon Experience Recall) with quantitative metrics (+159% Pass@1, 100% write conflict elimination, 5x regression recovery), visual execution topology, ablation studies, and automated test suite in `tests/benchmarks.test.mjs`.
 
+### Fixed
+- **Signature Timing Normalization & Conflict URI Handling**: Hardened `computeFailureSignature` to normalize durations with whitespace (e.g. `142.5 ms` vs `34.2ms`), preventing false signature divergence during stall detection; upgraded `detectTargetFileConflicts` to normalize `file://` URIs and leading slashes; enhanced LATS rollback in `boost.dwf.ts` to detect regressions when test failure counts increase across rounds.
+
 ## [0.3.0] - 2026-10-24
 
 ### Added

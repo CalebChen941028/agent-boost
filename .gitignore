@@ -8,3 +8,8 @@ models.local.json
 *.log
 .serena/
 .video_agent/
+
+# local secrets and live-run artifacts — never commit
+.env
+.env.*
+live-results/

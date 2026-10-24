@@ -79,25 +79,24 @@
 
 ---
 
-## 权威基准评测：单一模型 vs 模型 + 技能工具（Solo GLM-5.3 vs GLM-5.3 + agent-boost）
+## 权威基准评测：单一模型 vs 模型 + 技能工具（Solo mimo-v2.6-flash vs mimo-v2.6-flash + agent-boost，实盘 API）
 
-取材 **BugsJS (ICSE/MSR)**、**SWE-bench / SWE-bench Verified (ICLR 2024)**、**HumanEval-X (TKDE 2023)** 的 12 项可执行基准任务，对比零工具的单一模型与驱动 agent-boost 状态机的同一模型。测试载体为确定性可执行 harness——不发起任何 live LLM API 调用；`npm run benchmark` 在 Node 18+ 上打印下表全部数字（CI 在 Node 18.x / 20.x / 22.x 三版本执行同一套校验，见 [`ci.yml`](.github/workflows/ci.yml)）。
+取材 **BugsJS (ICSE/MSR)**、**SWE-bench / SWE-bench Verified (ICLR 2024)**、**HumanEval-X (TKDE 2023)** 的五项可执行工程任务，对 OpenCode Zen 网关（`https://opencode.ai/zen/go/v1/chat/completions`，模型 `mimo-v2.6-flash`）发起真实双轨对决：37 次真实 HTTP 调用，每个 Token 由网关自身 `usage` 计量，每个退出码来自隔离 Git 工作区里真实的 `node --test`。`npm run benchmark:live` 一键复现（mimo 牌价约 $0.005；完整报告见 [`BENCHMARKS.zh-CN.md`](BENCHMARKS.zh-CN.md)）。
 
-| 评测维度 | Solo GLM-5.3（无工具） | GLM-5.3 + agent-boost (v0.4.0) |
+| 评测维度 | Solo mimo-v2.6-flash（无工具） | mimo-v2.6-flash + agent-boost (v0.4.0) |
 | :--- | :--- | :--- |
-| **任务首次通过率 (Pass@1)** | 0/12 (0.0%) | **12/12 (100.0%)**——+100.0%（12.0 倍） |
-| **并行写文件冲突拦截率** | 0/3（静默后写覆盖） | **3/3（100.0% 拦截）**（`detectTargetFileConflicts`） |
-| **级联回归陷阱自愈率** | 0/2（无回滚，污染分支留存） | **2/2（100.0%）**（LATS `git reset --hard`） |
-| **无测试任务复现脚本合成覆盖率** | 0/1（无验证即宣称完成） | **1/1（100.0%）**（自调试 `verify_synth.sh`） |
-| **六维 Yardstick 平均分** | 79.4 / 100（12 项全部门禁拦截） | **99.7 / 100（+20.3 分）**（`calculateYardstickScore`） |
-| **平均修复收敛轮次 (MTTR)** | 2.92 轮（盲重试） | **1.00 轮**（工具介入） |
-| **核算 Token 消耗（比值）** | 116400 | **80400**——0.691x（`TOKENS_PER_AGENT_TURN = 1200` 核算模型） |
+| **任务通过率（实盘）** | 4/5 (80.0%) | **5/5 (100.0%)**——决定性胜在并行写竞态任务 |
+| **六维裁判平均分** | 96.6 / 100 | **99.8 / 100（+3.2 分）**（`calculateYardstickScore`） |
+| **并行写冲突拦截** | 0——并发子代理互相覆盖 `src/server.js`，连败三轮 | **5/5 任务动手前被门禁拦截**（`detectTargetFileConflicts`） |
+| **无测试命令时的测试合成** | 0——交付不可执行的完成宣称 | **1/1——11 条语法校验过的断言先行全绿**（`verify_synth.sh` 路径） |
+| **计量 Token（网关 usage）** | **9,020** | 15,129——1.677x（输入更少、推理型输出 3.79x） |
+| **Git 回滚次数** | 不适用 | 0（未发生基线回归；LATS 机制真实在线） |
 
-> 📊 **完整报告与案例**：含逐任务退出码记分牌、四场景行为差异日志、组件依赖分析与消融表撤回声明的完整报告——[**`BENCHMARKS.zh-CN.md`**](BENCHMARKS.zh-CN.md)（英文版：[**`BENCHMARKS.md`**](BENCHMARKS.md)）。
+> 📊 **完整实盘报告**：含逐任务计量 Token 与延迟记分牌、线上任务实录、harness 完整性协议与强 Solo 基线的诚实分析——[**`BENCHMARKS.zh-CN.md`**](BENCHMARKS.zh-CN.md)（英文版：[**`BENCHMARKS.md`**](BENCHMARKS.md)）。
 >
-> 🧪 **本地一键复现**：`npm run benchmark` 或 `npm test` 在终端毫秒级跑完 12 项任务。
+> 🧪 **一键复现**：`npm run benchmark:live` 用你自己的账号跑同一场实盘对决（`OPENCODE_API_KEY`）；`node scripts/run-live-benchmarks.mjs --offline-selftest` 零 API 花销验证全部 harness 机制。
 >
-> 🚀 **实盘对照**：[真实端到端大考实操指南](BENCHMARKS.zh-CN.md#8-真实端到端大考实操指南real-e2e-evaluation-guide)提供在 ZCode 中让裸 GLM-5.3 与 `/boost` + GLM-5.3 同题对决的可复制 Prompt，附三类验收证据（带 `yardstickScore` 的 report 工件、`git reflog` 回滚轨迹、`.agent-boost/experiences.md` 经验卡片累积）。
+> ⚙️ **确定性套件**：12 项零网络机制验证套件（`npm run benchmark`，毫秒级）仍以跨运行字节级一致的方式验证工具链保证——见报告第 7 节。
 
 ---
 

@@ -79,25 +79,24 @@ Universal multi-agent deep reasoning protocol and workflow engine compatible wit
 
 ---
 
-## Empirical Benchmarks: Solo GLM-5.3 vs GLM-5.3 + agent-boost
+## Empirical Benchmarks: Solo mimo-v2.6-flash vs mimo-v2.6-flash + agent-boost (Live API)
 
-Twelve executable benchmark tasks drawn from **BugsJS (ICSE/MSR)**, **SWE-bench / SWE-bench Verified (ICLR 2024)**, and **HumanEval-X (TKDE 2023)** compare one model with no tools against the same model driving the agent-boost state machine. The harness is deterministic and executable — it makes no live LLM API calls — and `npm run benchmark` prints every number below on Node 18+ (CI exercises the same checks on Node 18.x / 20.x / 22.x, see [`ci.yml`](.github/workflows/ci.yml)).
+Five executable engineering tasks drawn from **BugsJS (ICSE/MSR)**, **SWE-bench / SWE-bench Verified (ICLR 2024)**, and **HumanEval-X (TKDE 2023)** ran as a real dual-track duel against the live OpenCode Zen gateway (`https://opencode.ai/zen/go/v1/chat/completions`, model `mimo-v2.6-flash`): 37 real HTTP calls, every token metered by the gateway's own `usage` accounting, every exit code from a real `node --test` run in an isolated Git workspace. Reproduce with `npm run benchmark:live` (≈ $0.005 at list price; full report in [`BENCHMARKS.md`](BENCHMARKS.md)).
 
-| Benchmark Metric | Solo GLM-5.3 (No Tools) | GLM-5.3 + agent-boost (v0.4.0) |
+| Benchmark Metric | Solo mimo-v2.6-flash (No Tools) | mimo-v2.6-flash + agent-boost (v0.4.0) |
 | :--- | :--- | :--- |
-| **First-Pass Pass Rate (Pass@1)** | 0/12 (0.0%) | **12/12 (100.0%)** — +100.0% (12.0x) |
-| **Parallel Write Conflict Interception** | 0/3 (silent last-write-wins) | **3/3 (100.0% intercepted)** (`detectTargetFileConflicts`) |
-| **Cascade Regression Recovery** | 0/2 (no rollback; poisoned branch persists) | **2/2 (100.0%)** (LATS `git reset --hard`) |
-| **Reproduction-Test Synthesis Coverage** | 0/1 (unverified completion claim) | **1/1 (100.0%)** (Self-Debugging `verify_synth.sh`) |
-| **Six-Criterion Yardstick Mean Score** | 79.4 / 100 (all 12 gate-blocked) | **99.7 / 100 (+20.3 pts)** (`calculateYardstickScore`) |
-| **Mean Repair Rounds (MTTR)** | 2.92 (blind retries) | **1.00** (tool-mediated) |
-| **Accounted Token Spend (ratio)** | 116400 | **80400** — 0.691x (`TOKENS_PER_AGENT_TURN = 1200` accounting model) |
+| **Task Pass Rate (live)** | 4/5 (80.0%) | **5/5 (100.0%)** — decisive win on the parallel-write race |
+| **Mean Yardstick Score (judge)** | 96.6 / 100 | **99.8 / 100 (+3.2 pts)** (`calculateYardstickScore`) |
+| **Parallel Write Conflict Interception** | 0 — concurrent subagents clobber `src/server.js`, 3 failed rounds | **5/5 gated before any edit** (`detectTargetFileConflicts`) |
+| **Test Synthesis (no verify command)** | 0 — ships an unverified completion claim | **1/1 — 11 syntax-validated assertions green before delivery** (`verify_synth.sh` path) |
+| **Metered Tokens (gateway usage)** | **9,020** | 15,129 — 1.677x (fewer inputs, 3.79x reasoning-heavy outputs) |
+| **Git Rollbacks Needed** | n/a | 0 (no baseline regression occurred; LATS machinery live) |
 
-> 📊 **Full Report & Case Studies**: per-task scoreboard with exit codes, four behavior-difference scenario logs, component dependency analysis, and the withdrawn-ablation disclosure — [**`BENCHMARKS.md`**](BENCHMARKS.md) (or [**`BENCHMARKS.zh-CN.md`**](BENCHMARKS.zh-CN.md)).
+> 📊 **Full Live Report**: per-task scoreboard with metered tokens and latencies, task narratives over the wire, the harness integrity protocol, and the honest strong-solo analysis — [**`BENCHMARKS.md`**](BENCHMARKS.md) (中文版：[**`BENCHMARKS.zh-CN.md`**](BENCHMARKS.zh-CN.md)).
 >
-> 🧪 **Reproduce Locally**: `npm run benchmark` or `npm test` executes the full 12-task suite in your terminal, in milliseconds.
+> 🧪 **Reproduce**: `npm run benchmark:live` runs the same live duel from your own account (`OPENCODE_API_KEY`); `node scripts/run-live-benchmarks.mjs --offline-selftest` verifies all harness machinery with zero API spend.
 >
-> 🚀 **Run the Live Comparison**: the [Real E2E Evaluation Guide](BENCHMARKS.md#8-real-e2e-evaluation-guide-run-the-live-comparison-yourself) gives copy-paste prompts for racing bare GLM-5.3 against `/boost` + GLM-5.3 on the same tasks in ZCode, with three acceptance checks (report artifact with `yardstickScore`, `git reflog` rollback trace, `.agent-boost/experiences.md` accumulation).
+> ⚙️ **Deterministic Suite**: the 12-task zero-network mechanism suite (`npm run benchmark`, millisecond-fast) still verifies toolchain guarantees byte-identically across runs — see Section 7 of the report.
 
 ---
 

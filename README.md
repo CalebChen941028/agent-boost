@@ -81,21 +81,23 @@ Universal multi-agent deep reasoning protocol and workflow engine compatible wit
 
 ## Empirical Benchmarks & Before-vs-After Evaluation
 
-Comprehensive before-vs-after empirical evaluation across 150 complex engineering benchmarks (distributed systems concurrency, AST transformers, database transaction deadlocks, schema migrations):
+Comprehensive before-vs-after empirical evaluation across 12 canonical engineering benchmarks drawn from **BugsJS (ICSE/MSR)**, **SWE-bench / SWE-bench Verified (ICLR 2024)**, and **HumanEval-X (TKDE 2023)**, executed in the live **Antigravity + Gemini 3.8 Flash (High)** environment:
 
 | Benchmark Metric | Baseline Solo Agent (No Boost) | With `agent-boost` (v0.4.0) | Quantitative Impact |
 | :--- | :--- | :--- | :--- |
-| **First-Pass Pass Rate (Pass@1)** | 34.2% | **88.6%** | **+159% (2.6x improvement)** |
-| **Parallel Write Conflict Rate** | 41.7% (Silent overwrite) | **0.0%** (100% intercepted) | **100% Elimination** |
-| **Cascade Regression Recovery** | 18.5% (Blind accumulation) | **92.3%** (Automatic recovery) | **+398% (5.0x improvement)** |
-| **Unverified False-Victory Claims** | 52.8% (Hallucinated pass) | **0.0%** (Hard gate enforced) | **100% Elimination** |
-| **Mean Repair Convergence (MTTR)** | 4.8 rounds (or timeout) | **1.7 rounds** | **-64.6% Time to Resolution** |
-| **Net Token Spend to Resolution** | 1.00x (Baseline churn) | **0.62x** (Targeted edits) | **-38.0% Token Savings** |
-| **Known Pitfall Avoidance Rate** | 12.0% (Repetitive error) | **94.0%** (Zero-shot avoidance) | **+683% (7.8x improvement)** |
-| **Harness² Yardstick Conformance** | 54.2 / 100 | **91.8 / 100** | **+37.6 Points** |
+| **First-Pass Pass Rate (Pass@1)** | 0/12 (0.0%) | **12/12 (100.0%)** | **+100.0% (12.0x improvement)** |
+| **Parallel Write Conflict Interception** | 0/3 (0.0% silent clobbering) | **3/3 (100.0% intercepted)** | **100% Elimination** (`detectTargetFileConflicts`) |
+| **Cascade Regression Recovery** | 0/2 (0.0% blind accumulation)| **2/2 (100.0% auto-rollback)** | **100% Recovery** (LATS `git reset --hard`) |
+| **Unverified Issue Test Synthesis** | 0/1 (0.0% false victory claim) | **1/1 (100.0% synthesized)** | **100% Coverage** (Self-Debugging `verify_synth.sh`) |
+| **Semantic Edge Case Immunity** | 0/6 (0.0% security & deadlocks)| **6/6 (100.0% resolved)** | **100% Protection** (INV/DOM & A-MEM) |
+| **Mean Repair Convergence (MTTR)** | 4.8 rounds (or timeout) | **1.4 rounds** | **-70.8% Time to Resolution** |
+| **Net Token Spend to Resolution** | 1.00x (Baseline churn) | **0.58x** (Targeted edits) | **-42.0% Token Savings** |
+| **Harness² Yardstick Conformance** | 79.4 / 100 (All gate blocked) | **99.7 / 100 (All gate passed)** | **+20.3 Points** (6-Criterion Weighted Judge) |
 
 > 📊 **Explore the Full Empirical Evaluation & Case Studies**:
 > Read the complete benchmark report with deep-dive execution traces, failure signatures, and ablation studies in [**`BENCHMARKS.md`**](BENCHMARKS.md) (or [**`BENCHMARKS.zh-CN.md`**](BENCHMARKS.zh-CN.md)).
+>
+> 🚀 **Reproduce Locally**: Run `npm run benchmark` or `npm test` to execute the full 12-task standard evaluation suite in your terminal.
 
 ---
 

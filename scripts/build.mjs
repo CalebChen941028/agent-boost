@@ -369,6 +369,9 @@ const requiredPureFunctions = [
   "validateTeamProfile",
   "resolveModelConfiguration",
   "formatExperienceEntry",
+  "matchExperienceCues",
+  "evaluateTaskComplexity",
+  "calculateYardstickScore",
 ];
 
 for (const fn of requiredPureFunctions) {

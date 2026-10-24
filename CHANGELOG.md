@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-10-24
+
+### Added
+- **Dynamic Test-Time Compute Allocation (`evaluateTaskComplexity`)**: Inspired by Snell et al. (2024, arXiv:2408.03314), dynamically scales test-time compute allocation across task tiers (`simple`, `standard`, `hard`), adjusting workstream parallelism (1–5), repair iteration limits (1–5), and verification depth (`shallow`, `standard`, `deep`).
+- **LATS Regression Rollback & Git Checkpoint Snapshots**: Inspired by Language Agent Tree Search (Zhou et al. 2023, arXiv:2310.04406), automatically takes git snapshots before each repair round and rolls back (`git reset --hard`) when repair candidates introduce test regressions or escalate error signatures.
+- **Automated Test Discovery & Reproduction Test Synthesis (Self-Debugging)**: Inspired by Self-Debugging (Chen et al. 2023, arXiv:2304.05128), probes existing test runners and synthesizes deterministic reproduction tests (e.g., `verify_synth.sh`) when test coverage is absent.
+- **Agent-as-a-Judge Quantitative Yardstick Scoring (`calculateYardstickScore`)**: Inspired by Zhuge et al. (2024, arXiv:2410.10934), introduces weighted 6-criterion quantitative scoring (DELIVERY: 25, CONFORMANCE: 20, FIDELITY: 15, INTERNAL_CONSISTENCY: 15, OPERATIONAL_FITNESS: 15, FINISH: 10) with an 85-point passing gate and zero-high-severity defect requirement.
+- **A-MEM / ExpeL Intelligent Experience Cue Recall (`matchExperienceCues`)**: Inspired by Zhao et al. (2023, arXiv:2308.10144), enables keyword- and tag-driven retrieval of historical `<experience>` cues from `.agent-boost/experiences.md` to guide task planning and avoid historical traps.
+- **Invariant Pre-Flight (INV-First) Priority**: Root Cause Diagnosers enforce procedural and runtime environment verification (`isInvariantFailure`) before analyzing domain application code.
+- **SSOT Pure Functions Parity (10/10 functions)**: Expanded Single-Source-of-Truth from 7 to 10 pure functions (`matchExperienceCues`, `evaluateTaskComplexity`, `calculateYardstickScore`) with 100% parameter and body parity across TypeScript, JavaScript, and ZCode workflows.
+
 ## [0.3.0] - 2026-10-24
 
 ### Added

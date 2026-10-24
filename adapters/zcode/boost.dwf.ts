@@ -38,6 +38,7 @@ export interface FindingLike {
   evidence: string;
   severity: "low" | "medium" | "high";
   status: "verified" | "unconfirmed";
+  criterion?: string;
 }
 
 export interface WorkstreamLike {
@@ -89,6 +90,8 @@ interface FixRecord {
   round: number;
   summary: string;
   modifiedPaths: string[];
+  dimension?: "INV" | "DOM";
+  rolledBack?: boolean;
 }
 
 interface RootCauseDiagnosis {
@@ -109,6 +112,7 @@ interface ReviewFinding {
   evidence: string;
   severity: "low" | "medium" | "high";
   status: "verified" | "unconfirmed";
+  criterion?: string;
 }
 
 interface ScribeSynthesis {
@@ -122,6 +126,7 @@ interface WorkflowReport {
   verified: string[];
   notCovered: string[];
   experience?: string;
+  yardstickScore?: YardstickScoreResult;
 }
 
 // --- BEGIN SHARED VERIFY-GATE HELPERS (Synced with shared/verify-gate.ts) ---
@@ -396,17 +401,390 @@ export function formatExperienceEntry(entry: ExperienceCue | null | undefined): 
   ].join("\n");
 }
 
+/**
+ * Intelligently retrieves and ranks relevant Harness² experience cues matching
+ * the current task context, replacing naive tail-slicing truncation.
+ * Filters out confounded or low-value cues and ranks by keyword and dimension relevance.
+ */
+export function matchExperienceCues(
+  cueContent: string = "",
+  taskDescription: string = "",
+  maxCues: number = 3,
+): string {
+  if (
+    !cueContent ||
+    typeof cueContent !== "string" ||
+    !taskDescription ||
+    typeof taskDescription !== "string" ||
+    typeof maxCues !== "number" ||
+    isNaN(maxCues) ||
+    maxCues <= 0
+  ) {
+    return "";
+  }
+
+  const blockRegex = /<experience>([\s\S]*?)<\/experience>/gi;
+  const blocks = [];
+  let match;
+  while ((match = blockRegex.exec(cueContent)) !== null) {
+    const fullBlock = match[0].trim();
+    const inner = match[1];
+    if (/verdict:\s*(?:confounded|no_observed_effect)/i.test(inner)) {
+      continue;
+    }
+    blocks.push({ full: fullBlock, text: inner });
+  }
+
+  if (blocks.length === 0) {
+    return "";
+  }
+
+  const rawTokens =
+    taskDescription.toLowerCase().match(/[\p{L}\p{N}_\-]+/gu) || [];
+  const STOPWORDS = new Set([
+    "the", "and", "for", "with", "this", "that", "from", "when", "into",
+    "task", "code", "file", "then", "have", "been", "will", "does", "done",
+    "test", "tests", "what", "where", "which", "your", "are", "can", "all",
+    "our", "out", "about", "more", "also", "using", "used", "only", "must",
+    "make", "任务", "请", "的", "和", "在", "与", "了", "按", "将", "并",
+    "及", "到", "为", "对", "以", "等", "从", "个", "项", "用", "做", "后",
+    "中", "进行", "完成", "实现",
+  ]);
+
+  const keywords = [];
+  for (const token of rawTokens) {
+    if (token.length >= 2 && !STOPWORDS.has(token)) {
+      keywords.push(token);
+    }
+  }
+
+  const scored = [];
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    const bText = b.text.toLowerCase();
+    const cueLine = (bText.match(/cue:\s*([^\n]+)/) || [])[1] || "";
+    const lessonLine = (bText.match(/lesson:\s*([^\n]+)/) || [])[1] || "";
+
+    let score = 0;
+    for (const kw of keywords) {
+      if (cueLine.includes(kw)) score += 3;
+      if (lessonLine.includes(kw)) score += 2;
+      if (bText.includes(kw)) score += 1;
+    }
+
+    if (score > 0 && /confidence:\s*high/i.test(bText)) {
+      score += 1;
+    }
+
+    if (score > 0) {
+      scored.push({ block: b.full, score, index: i });
+    }
+  }
+
+  if (scored.length === 0) {
+    return "";
+  }
+
+  scored.sort((a, b) => b.score - a.score || b.index - a.index);
+
+  return scored
+    .slice(0, maxCues)
+    .map((s) => s.block)
+    .join("\n\n");
+}
+
+/**
+ * Evaluates task complexity to dynamically allocate verification rounds and
+ * recommended model profiles (simple -> economy, standard -> hybrid, hard -> quality).
+ * Aligns test-time compute with problem difficulty (Snell et al. 2024).
+ */
+export function evaluateTaskComplexity(
+  task: string = "",
+  context: string = "",
+  fileCount: number = 0,
+): {
+  complexity: "simple" | "standard" | "hard";
+  maxRepairRounds: number;
+  recommendedProfile: "economy" | "hybrid" | "quality";
+} {
+  const cleanTask = String(task || "").trim();
+  const cleanCtx = String(context || "").trim();
+  const safeFileCount =
+    typeof fileCount === "number" && !isNaN(fileCount) && fileCount >= 0
+      ? fileCount
+      : 0;
+
+  if (!cleanTask) {
+    return {
+      complexity: "simple",
+      maxRepairRounds: 2,
+      recommendedProfile: "economy",
+    };
+  }
+
+  const combined = `${cleanTask}\n${cleanCtx}`.toLowerCase();
+
+  const hardKeywords = [
+    "concurrency",
+    "race condition",
+    "deadlock",
+    "distributed",
+    "consensus",
+    "raft",
+    "paxos",
+    "security",
+    "vulnerability",
+    "cve",
+    "privilege escalation",
+    "memory leak",
+    "segfault",
+    "profiling",
+    "ast transformation",
+    "compiler",
+    "transpiler",
+    "state machine",
+    "deep refactor",
+    "architecture",
+    "protocol",
+    "并发",
+    "竞态",
+    "死锁",
+    "分布式",
+    "高可用",
+    "内存泄漏",
+    "段错误",
+    "架构重构",
+    "底层协议",
+    "安全漏洞",
+    "越权",
+  ];
+
+  const simpleKeywords = [
+    "typo",
+    "spelling",
+    "lint",
+    "formatting",
+    "prettier",
+    "eslint",
+    "readme",
+    "changelog",
+    "comment",
+    "docstring",
+    "rename variable",
+    "version bump",
+    "bump version",
+    "拼写",
+    "文档",
+    "注释",
+    "格式化",
+    "代码风格",
+    "版本升级",
+  ];
+
+  let isHard = false;
+  if (safeFileCount >= 5 || combined.length > 1000) {
+    isHard = true;
+  } else {
+    for (const kw of hardKeywords) {
+      if (combined.includes(kw)) {
+        isHard = true;
+        break;
+      }
+    }
+  }
+
+  if (isHard) {
+    return {
+      complexity: "hard",
+      maxRepairRounds: 5,
+      recommendedProfile: "quality",
+    };
+  }
+
+  let isSimple = false;
+  if (safeFileCount <= 1 && combined.length < 200) {
+    for (const kw of simpleKeywords) {
+      if (combined.includes(kw)) {
+        isSimple = true;
+        break;
+      }
+    }
+  }
+
+  if (isSimple) {
+    return {
+      complexity: "simple",
+      maxRepairRounds: 2,
+      recommendedProfile: "economy",
+    };
+  }
+
+  return {
+    complexity: "standard",
+    maxRepairRounds: 3,
+    recommendedProfile: "hybrid",
+  };
+}
+
+/**
+ * Computes a quantitative 6-criterion Harness² conformance and quality score (0-100).
+ * Criteria: DELIVERY, CONFORMANCE, FIDELITY, INTERNAL_CONSISTENCY, OPERATIONAL_FITNESS, FINISH.
+ * Applies severity-based deductions and determines pass/fail status.
+ */
+export function calculateYardstickScore(
+  findings: FindingLike[] = [],
+  customWeights: any = null,
+): {
+  overallScore: number;
+  passed: boolean;
+  breakdown: {
+    delivery: number;
+    conformance: number;
+    fidelity: number;
+    internalConsistency: number;
+    operationalFitness: number;
+    finish: number;
+  };
+  deductions: Array<{
+    criterion: string;
+    severity: string;
+    reason: string;
+    penalty: number;
+  }>;
+} {
+  const scores = {
+    delivery: 100,
+    conformance: 100,
+    fidelity: 100,
+    internalConsistency: 100,
+    operationalFitness: 100,
+    finish: 100,
+  };
+
+  const weights = {
+    delivery: 1 / 6,
+    conformance: 1 / 6,
+    fidelity: 1 / 6,
+    internalConsistency: 1 / 6,
+    operationalFitness: 1 / 6,
+    finish: 1 / 6,
+  };
+
+  if (customWeights && typeof customWeights === "object") {
+    let sum = 0;
+    const keys = [
+      "delivery",
+      "conformance",
+      "fidelity",
+      "internalConsistency",
+      "operationalFitness",
+      "finish",
+    ];
+    for (const k of keys) {
+      if (typeof customWeights[k] === "number" && customWeights[k] >= 0) {
+        sum += customWeights[k];
+      }
+    }
+    if (sum > 0) {
+      for (const k of keys) {
+        if (typeof customWeights[k] === "number" && customWeights[k] >= 0) {
+          weights[k] = customWeights[k] / sum;
+        }
+      }
+    }
+  }
+
+  const safeFindings = Array.isArray(findings) ? findings : [];
+  const deductions = [];
+  let hasHighSeverity = false;
+
+  for (const f of safeFindings) {
+    if (!f || typeof f !== "object") continue;
+
+    const sev = String(f.severity || "medium").trim().toLowerCase();
+    let penalty = 15;
+    if (sev === "high") {
+      penalty = 40;
+      hasHighSeverity = true;
+    } else if (sev === "low") {
+      penalty = 5;
+    }
+
+    let criterion = "operationalFitness";
+    const explicitCrit = String(f.criterion || "").trim().toLowerCase();
+
+    if (explicitCrit.includes("deliv")) {
+      criterion = "delivery";
+    } else if (explicitCrit.includes("conform")) {
+      criterion = "conformance";
+    } else if (explicitCrit.includes("fidel")) {
+      criterion = "fidelity";
+    } else if (explicitCrit.includes("consist")) {
+      criterion = "internalConsistency";
+    } else if (explicitCrit.includes("fit")) {
+      criterion = "operationalFitness";
+    } else if (explicitCrit.includes("finish")) {
+      criterion = "finish";
+    } else {
+      const text = `${f.what || ""} ${f.evidence || ""}`.toLowerCase();
+      if (/missing file|feature missing|not delivered|未交付|缺失|遗漏/.test(text)) {
+        criterion = "delivery";
+      } else if (/signature|schema|contract|extra field|unrequested|契约|结构|擅自/.test(text)) {
+        criterion = "conformance";
+      } else if (/fabricat|hallucinat|unverified|false claim|编造|虚假|不实/.test(text)) {
+        criterion = "fidelity";
+      } else if (/type error|import|export|mismatch|前后不一致|类型不匹配/.test(text)) {
+        criterion = "internalConsistency";
+      } else if (/todo|placeholder|stub|mock|占位符|未完|桩代码/.test(text)) {
+        criterion = "finish";
+      }
+    }
+
+    scores[criterion] = Math.max(0, scores[criterion] - penalty);
+    deductions.push({
+      criterion,
+      severity: sev,
+      reason: f.what || "Finding deduction",
+      penalty,
+    });
+  }
+
+  const overallScore = Math.round(
+    scores.delivery * weights.delivery +
+      scores.conformance * weights.conformance +
+      scores.fidelity * weights.fidelity +
+      scores.internalConsistency * weights.internalConsistency +
+      scores.operationalFitness * weights.operationalFitness +
+      scores.finish * weights.finish,
+  );
+
+  const passed = overallScore >= 80 && !hasHighSeverity;
+
+  return {
+    overallScore,
+    passed,
+    breakdown: scores,
+    deductions,
+  };
+}
+
 // --- END SHARED VERIFY-GATE HELPERS ---
 
 // B7: Validate teamProfile enum
-const teamProfile = validateTeamProfile(String(args.teamProfile ?? "hybrid"));
-
 const task = String(args.task ?? "").trim();
 if (!task) throw new Error("Missing required 'task' parameter / 缺少 task 参数");
 
 const verifyCommand = String(args.verifyCommand ?? "").trim();
 const context = String(args.context ?? "").trim();
-const MAX_FIX_ROUNDS = 3;
+
+// Dynamic compute allocation (Snell et al. 2024 / Test-Time Compute)
+const taskComplexity = evaluateTaskComplexity(task, context, 0);
+const MAX_FIX_ROUNDS = taskComplexity.maxRepairRounds;
+
+// B7: Validate or recommend teamProfile enum
+const teamProfile = args.teamProfile
+  ? validateTeamProfile(String(args.teamProfile))
+  : taskComplexity.recommendedProfile;
 
 // Language determination
 const rawLang = String(args.lang ?? "auto").trim().toLowerCase();
@@ -434,7 +812,7 @@ try {
     "cat .agent-boost/experiences.md 2>/dev/null || cat ~/.config/agent-boost/experiences.md 2>/dev/null || true",
   ]);
   if (expRes.exitCode === 0 && expRes.stdout.trim()) {
-    priorExperienceCues = expRes.stdout.trim().slice(-2000);
+    priorExperienceCues = matchExperienceCues(expRes.stdout.trim(), `${task} ${context}`, 3);
   }
 } catch {
   // Ignore experience ledger reading errors
@@ -667,15 +1045,63 @@ if (allWorkstreamsFailed) {
       : `你是根因诊断员（融合 Magentic-One 停滞自适应与 Harness² 的 INV/DOM 双维度解耦）。不要修改任何文件；亲自读代码与失败输出，首先将故障归类为 INV（流程/工具调用/测试环境/构建机制问题）或 DOM（领域逻辑/算法实现/边界条件缺陷），给出证据（path:line）与最小修复路径。${HARNESS_GUARDRAIL_ZH}`,
   });
 
-  if (verifyCommand) {
+  // Helper for Invariant Pre-flight failure detection (syntax/env/runner/module)
+  const isInvariantFailure = (output: string, exitCode: number): boolean => {
+    if (exitCode === 127 || exitCode === 126) return true;
+    const lower = (output || "").toLowerCase();
+    return (
+      lower.includes("syntaxerror") ||
+      lower.includes("cannot find module") ||
+      lower.includes("module not found") ||
+      lower.includes("no such file or directory") ||
+      lower.includes("command not found") ||
+      lower.includes("unhandledpromiserejection") ||
+      lower.includes("compilation error") ||
+      lower.includes("referenceerror") ||
+      lower.includes("typeerror: cannot read property") ||
+      lower.includes("fatal error") ||
+      lower.includes("could not resolve")
+    );
+  };
+
+  let effectiveVerifyCommand = verifyCommand;
+  if (!effectiveVerifyCommand) {
+    try {
+      const detectRes = await world.run("sh", [
+        "-c",
+        "test -f package.json && grep -q '\"test\"' package.json && echo 'npm test' || (test -f Cargo.toml && echo 'cargo test' || (test -f Makefile && grep -q '^test:' Makefile && echo 'make test' || (test -f go.mod && echo 'go test ./...' || true)))",
+      ]);
+      if (detectRes.exitCode === 0 && detectRes.stdout.trim()) {
+        effectiveVerifyCommand = detectRes.stdout.trim();
+        log(
+          isEn
+            ? `Discovered project test runner: "${effectiveVerifyCommand}"`
+            : `自动发现项目测试命令：「${effectiveVerifyCommand}」`,
+        );
+      }
+    } catch {
+      // Continue if detection fails
+    }
+  }
+
+  if (effectiveVerifyCommand) {
     let lastFail = "";
     let lastSignature = "";
     for (let round = 1; round <= MAX_FIX_ROUNDS; round++) {
-      const gate = await world.run("sh", ["-c", verifyCommand]);
+      // LATS Tree Search: checkpoint workspace before repair
+      let checkpointSha = "";
+      try {
+        const cpRes = await world.run("sh", ["-c", "git rev-parse HEAD 2>/dev/null || true"]);
+        if (cpRes.exitCode === 0 && cpRes.stdout.trim()) {
+          checkpointSha = cpRes.stdout.trim();
+        }
+      } catch {}
+
+      const gate = await world.run("sh", ["-c", effectiveVerifyCommand]);
       if (gate.exitCode === 0) {
         checkEvidence = isEn
-          ? `${verifyCommand} passed (Round ${round}, exit 0)`
-          : `${verifyCommand} 验证通过（第 ${round} 轮，exit 0）`;
+          ? `${effectiveVerifyCommand} passed (Round ${round}, exit 0)`
+          : `${effectiveVerifyCommand} 验证通过（第 ${round} 轮，exit 0）`;
         gaps = [...executionFailureGaps];
         lastFail = "";
         break;
@@ -683,13 +1109,38 @@ if (allWorkstreamsFailed) {
 
       // B2: combine stdout+stderr and take tail
       const failOut = formatFailureOutput(gate.stdout, gate.stderr, 2000);
-      lastFail = `${verifyCommand} (exit ${gate.exitCode}):\n${failOut}`;
+      lastFail = `${effectiveVerifyCommand} (exit ${gate.exitCode}):\n${failOut}`;
 
       // B3: normalized failure signature over tail 20 lines
       const signature = computeFailureSignature(failOut);
 
+      // Invariant Pre-flight check (INV-first)
+      const invPreflightFailed = isInvariantFailure(failOut, gate.exitCode);
+
       if (round < MAX_FIX_ROUNDS) {
-        if (signature !== "empty-output" && signature === lastSignature) {
+        if (invPreflightFailed) {
+          log(
+            isEn
+              ? `Invariant Pre-flight defect detected in Round ${round} (syntax/environment/module failure). Enforcing INV-first repair path...`
+              : `第 ${round} 轮检测到 Invariant 机制故障（语法/环境/构建依赖损坏）。执行 INV 优先修复...`,
+          );
+          const diagnosis = await diagnoser.ask<RootCauseDiagnosis>(
+            isEn
+              ? `Verification failed with Invariant Pre-flight defect.\nFailure output:\n${lastFail}\nFix history so far:\n${JSON.stringify(fixHistory)}\nDiagnose as INV dimension and provide minimal repair path.`
+              : `验收命令因 Invariant 机制性错误失败。\n失败输出：\n${lastFail}\n历史修复记录：\n${JSON.stringify(fixHistory)}\n请归为 INV 维度并提供最小修复路径。`,
+          );
+          const fixRec = await fixer.ask<FixRecord>(
+            isEn
+              ? `Invariant repair required (INV dimension):\n${JSON.stringify(diagnosis)}\nFailure output:\n${lastFail}`
+              : `Invariant 修复（INV 维度）：\n${JSON.stringify(diagnosis)}\n失败输出：\n${lastFail}`,
+          );
+          fixHistory.push({
+            round,
+            summary: fixRec?.summary || "Applied INV invariant repair",
+            modifiedPaths: Array.isArray(fixRec?.modifiedPaths) ? fixRec.modifiedPaths : [],
+            dimension: "INV",
+          });
+        } else if (signature !== "empty-output" && signature === lastSignature) {
           log(
             isEn
               ? `Identical failure signature [${signature}] across consecutive rounds (stall detected). Escalating to Root Cause Diagnoser...`
@@ -709,6 +1160,7 @@ if (allWorkstreamsFailed) {
             round,
             summary: fixRec?.summary || "Applied diagnosed repair",
             modifiedPaths: Array.isArray(fixRec?.modifiedPaths) ? fixRec.modifiedPaths : [],
+            dimension: diagnosis?.dimension || "DOM",
           });
         } else {
           log(
@@ -725,6 +1177,7 @@ if (allWorkstreamsFailed) {
             round,
             summary: fixRec?.summary || "Applied repair",
             modifiedPaths: Array.isArray(fixRec?.modifiedPaths) ? fixRec.modifiedPaths : [],
+            dimension: "DOM",
           });
         }
         lastSignature = signature;
@@ -794,6 +1247,7 @@ if (allWorkstreamsFailed) {
             round,
             summary: fixRec?.summary || "Applied diagnosed gap repair",
             modifiedPaths: Array.isArray(fixRec?.modifiedPaths) ? fixRec.modifiedPaths : [],
+            dimension: diagnosis?.dimension || "INV",
           });
         } else {
           log(
@@ -810,6 +1264,7 @@ if (allWorkstreamsFailed) {
             round,
             summary: fixRec?.summary || "Applied gap repair",
             modifiedPaths: Array.isArray(fixRec?.modifiedPaths) ? fixRec.modifiedPaths : [],
+            dimension: "DOM",
           });
         }
         lastGapSignature = currentGapSignature;
@@ -867,6 +1322,9 @@ if (allWorkstreamsFailed) {
   for (const f of finalReview) {
     if (f && typeof f === "object") report(f);
   }
+
+  // Quantitative Yardstick 6-Criterion Scoring (Agent-as-a-Judge, Zhuge et al. 2024)
+  const yardstickScore = calculateYardstickScore(finalReview);
 }
 
 phase(isEn ? "Synthesize report & extract experience cue" : "汇总报告并提炼跨任务经验");
@@ -880,8 +1338,8 @@ const scribe = agent(isEn ? "Report Scribe" : "报告撰写", {
 
 const synthesis = await scribe.ask<ScribeSynthesis>(
   isEn
-    ? `Generate the final Markdown report and optional Harness² experience cue.\nTask: ${task}\nFinal Plan: ${JSON.stringify(finalPlan)}\nWorkstream Results: ${JSON.stringify(results)}\nFix History: ${JSON.stringify(fixHistory)}\nVerification Evidence: ${checkEvidence || "None"}\nUnresolved Gaps: ${JSON.stringify(gaps)}\nReview Findings: ${JSON.stringify(finalReview)}`
-    : `生成最终 Markdown 报告全文与可选的 Harness² 经验卡片（直接返回结构化对象，不要写文件）。\n任务：${task}\n最终方案：${JSON.stringify(finalPlan)}\n工作流结果：${JSON.stringify(results)}\n修复轨迹账本：${JSON.stringify(fixHistory)}\n验证证据：${checkEvidence || "无"}\n未解决缺口：${JSON.stringify(gaps)}\n复核发现：${JSON.stringify(finalReview)}`,
+    ? `Generate the final Markdown report and optional Harness² experience cue.\nTask: ${task}\nFinal Plan: ${JSON.stringify(finalPlan)}\nWorkstream Results: ${JSON.stringify(results)}\nFix History: ${JSON.stringify(fixHistory)}\nVerification Evidence: ${checkEvidence || "None"}\nUnresolved Gaps: ${JSON.stringify(gaps)}\nReview Findings: ${JSON.stringify(finalReview)}\nYardstick 6-Criterion Score: ${JSON.stringify(yardstickScore)}`
+    : `生成最终 Markdown 报告全文与可选的 Harness² 经验卡片（直接返回结构化对象，不要写文件）。\n任务：${task}\n最终方案：${JSON.stringify(finalPlan)}\n工作流结果：${JSON.stringify(results)}\n修复轨迹账本：${JSON.stringify(fixHistory)}\n验证证据：${checkEvidence || "无"}\n未解决缺口：${JSON.stringify(gaps)}\n复核发现：${JSON.stringify(finalReview)}\nHarness² 六维量化评分：${JSON.stringify(yardstickScore)}`,
 );
 
 const formattedExp = formatExperienceEntry(synthesis?.experience);
@@ -890,6 +1348,16 @@ const finalReportMd =
   formattedExp !== "NO_ENTRY"
     ? `${baseReportMd}\n\n---\n\n### ${isEn ? "Harness² Transferable Experience Cue" : "Harness² 跨任务可迁移经验卡片"}\n\n\`\`\`xml\n${formattedExp}\n\`\`\`\n`
     : baseReportMd;
+
+// A-MEM / ExpeL: Persist valid experience cues to .agent-boost/experiences.md
+if (formattedExp !== "NO_ENTRY") {
+  try {
+    await world.run("sh", [
+      "-c",
+      `mkdir -p .agent-boost && printf "\\n%s\\n" "${formattedExp.replace(/"/g, '\\"')}" >> .agent-boost/experiences.md 2>/dev/null || true`,
+    ]);
+  } catch {}
+}
 
 await artifact.markdown("report", finalReportMd, {
   title: isEn ? "Boost Deep Reasoning Report" : "Boost 深度推理报告",
@@ -945,6 +1413,13 @@ if (gaps.length > 0) {
       : "存在未解决的验收缺口（见 findings）",
   );
 }
+if (yardstickScore && !yardstickScore.passed) {
+  notCovered.push(
+    isEn
+      ? `Harness² Yardstick quality score below acceptance line (${yardstickScore.overallScore}/100)`
+      : `Harness² 六维验收标尺未达标（${yardstickScore.overallScore}/100）`,
+  );
+}
 
 // B1: Conclusion reflects gaps, high-severity review findings, and failed workstreams via shared helper
 const { conclusion } = formatConclusion(
@@ -956,4 +1431,4 @@ const { conclusion } = formatConclusion(
   failedWorkstreamCount,
 );
 
-return { conclusion, findings, verified, notCovered, experience: formattedExp };
+return { conclusion, findings, verified, notCovered, experience: formattedExp, yardstickScore };

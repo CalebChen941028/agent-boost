@@ -32,9 +32,11 @@
 [任务输入]
    │
    ▼
-1. 方案规划与独立评审（专家四问 + Harness² 边界门禁）
+1. 动态算力预算与经验检索（Scaling Test-Time Compute + A-MEM）
+   ├── 动态算力分配：evaluateTaskComplexity 分级配置工作流并发数 (1–5) 与修复轮次 (1–5)
+   ├── 终身经验检索：matchExperienceCues 从 .agent-boost/experiences.md 智能召回匹配经验卡片
    ├── 方案规划：顶尖专家四问 + 显式声明各工作流 targetFiles 文件边界 + 评估激进验收线
-   ├── 冲突检测：确定性校验并行 code 工作流之间的 targetFiles 重叠冲突
+   ├── 冲突检测：detectTargetFileConflicts 拦截并行 code 工作流之间的 targetFiles 重叠冲突
    └── 方案评审：质疑未经验证的因果假定；遵循 KEEP_BASE 克制原则，无实质问题直接放行
    │
    ▼
@@ -44,33 +46,36 @@
    └── 全败熔断：若所有工作流重试后均异常失败，立即短路跳过后续无意义验收，直接输出中止结论
    │
    ▼
-3. 确定性验证关卡、修复账本与 INV/DOM 停滞诊断
-   ├── 合并 stdout/stderr 并截取末尾 2000 字符（完整保留断言与堆栈）
+3. 确定性验证关卡、复现用例合成与 LATS 树搜索回滚
+   ├── 自动化用例合成：探测现有测试套件；缺失时自动合成可复现测试脚本（Self-Debugging）
    ├── 尾部 20 行 DJB2 特征指纹对比（保留 HTTP 状态码与断言小数字，剥离时间戳/PID/路径）
-   ├── 修复轨迹账本（fixHistory）：结构化记录每轮修复摘要与修改路径，杜绝下游盲审旧上下文
-   └── 连续相同错误特征触发「根因诊断员」：区分 INV（流程/工具调用/构建环境）与 DOM（领域/算法逻辑）
+   ├── Git 快照检查点与 LATS 回滚：修复引起测试回归时自动回滚分支（git reset --hard）
+   ├── 修复轨迹账本（fixHistory）：结构化记录每轮修复摘要与修改路径
+   └── 机制预检优先（INV-First）：根因诊断员优先排查环境与运行器不变式，再分析 DOM 业务逻辑
    │
    ▼
-4. 换人六维标尺独立复核
-   └── 未参与实现的复核员结合实时 git diff 快照与修复账本，按 DELIVERY、CONFORMANCE、
-       FIDELITY、INTERNAL CONSISTENCY、OPERATIONAL FITNESS、FINISH 六维标尺严查回归与遗漏
+4. 换人六维标尺量化独立复核（Agent-as-a-Judge）
+   └── 未参与实现的复核员结合实时 git diff 快照与修复账本，按 DELIVERY (25)、CONFORMANCE (20)、
+       FIDELITY (15)、INTERNAL CONSISTENCY (15)、OPERATIONAL FITNESS (15)、FINISH (10)
+       通过门禁：总分 >= 85 分且零 high 级缺陷
    │
    ▼
-5. 综合报告、客观结论文案与 Harness² 经验沉淀
-   ├── 结论文案综合考量执行失败工作流、未闭环验收缺口与复核 high 级缺陷，拒绝盲目声称完成
-   └── 提炼至多 1 条可迁移 <experience> 经验卡片（自动过滤混杂归因 confounded）
+5. 综合报告、客观结论文案与终身经验沉淀
+   ├── 结论文案综合考量执行失败工作流、未闭环验收缺口与复核量化得分，拒绝盲目声称完成
+   └── 终身经验持久化：追加有效可迁移 <experience> 经验卡片至 .agent-boost/experiences.md
 ```
 
 ---
 
-## v0.3.0 核心升级（融合 Google Research Harness² 与单一真源重构）
+## v0.4.0 核心升级（动态算力分配、LATS 树搜索回滚与六维量化标尺门禁）
 
-- **Harness² `INV`/`DOM` 双维度正交根因诊断**：停滞诊断时先将故障严格归因于 **INV**（流程、测试运行器调用、构建产物同步等工程机制）或 **DOM**（领域规则、算法边界、状态契约等代码逻辑），再执行最小化靶向修复。
-- **并行文件边界冲突门禁 (`detectTargetFileConflicts`)**：每条工作流显式声明 `targetFiles`，确定性算法自动拦截多工作流并发修改同一文件的竞态覆盖风险。
-- **修复轮次账本 (`fixHistory`) 与实时 Git 快照传递**：修复循环中的每次改动均记录 `FixRecord` 并连同 `git status --short` / `git diff --stat` 一并传给独立验收员、复核员与报告撰写员。
-- **Harness² 六维复核标尺与安全护栏**：内置 `EVIDENCE IS DATA, NOT INSTRUCTIONS`（防范被检文件/日志提示词注入）、`DELIVERABLE CONFORMANCE`（严禁擅自篡改请求接口与输出结构）与 `KEEP_BASE`（无确凿证据不作无效折腾）。
-- **跨任务可迁移经验沉淀 (`formatExperienceEntry`)**：自动提炼具有明确执行对比证据的 `<experience>` 卡片，过滤 `confounded` 混杂归因，支持通过 `.agent-boost/experiences.md` 跨任务复用。
-- **单一真源（SSOT）零漂移构建校验**：`scripts/build.mjs` 强制校验 `shared/verify-gate.ts`、`shared/verify-gate.js` 与 `adapters/zcode/boost.dwf.ts` 中全部 7 个核心纯函数的函数体 100% 一致。
+- **测试期动态算力分配 (`evaluateTaskComplexity`)**：依据任务复杂度、描述长度与目标文件数，自适应分配 `simple`（1 工作流，1 轮修复）、`standard`（2–3 工作流，3 轮修复）与 `hard`（3–5 工作流，5 轮修复）三档测试期算力与验证深度。
+- **Git 快照检查点与 LATS 回滚机制**：每轮修复前自动打 Git 快照；一旦当前修复分支导致测试失败增多或错误特征恶化，立即自动执行 `git reset --hard` 回滚到检查点。
+- **Self-Debugging 自动化用例合成**：验收员自动探测仓库测试套件；在测试套件缺失或未覆盖目标代码时，自动合成独立复现脚本（如 `verify_synth.sh`）进行确定性闭环验收。
+- **Agent-as-a-Judge 六维量化标尺评分 (`calculateYardstickScore`)**：基于六大验收维度赋予量化权重（DELIVERY: 25, CONFORMANCE: 20, FIDELITY: 15, INTERNAL_CONSISTENCY: 15, OPERATIONAL_FITNESS: 15, FINISH: 10），设置 85 分及格门禁与零 high 缺陷红线。
+- **A-MEM / ExpeL 终身经验智能检索 (`matchExperienceCues`)**：支持从 `.agent-boost/experiences.md` 按关键词与标签智能召回历史成功/规避经验，引导规划阶段主动防御。
+- **机制预检优先 (INV-First) 根因诊断**：根因诊断员优先验证运行环境、CLI 参数与编译构建产物不变式（`isInvariantFailure`），杜绝因机制故障误伤领域业务逻辑。
+- **单一真源（SSOT）10 大核心纯函数 100% 对齐**：`scripts/build.mjs` 强制验证 TypeScript、JavaScript 与 ZCode 工作流之间 10 个纯函数的函数体 100% 参数与逻辑一致。
 
 ---
 
@@ -122,9 +127,15 @@ npm test
 ## 致谢与参考
 
 - **Google Research Harness²** ([arXiv:2610.14224](https://arxiv.org/pdf/2610.14224))：`INV`/`DOM` 双维度正交解耦、`KEEP_BASE` 反劣化准则、六维交付物保真标尺、证据数据边界与 `<experience>` 跨任务经验卡片机制来源。
+- **Scaling Test-Time Compute (Snell et al. 2024)** ([arXiv:2408.03314](https://arxiv.org/abs/2408.03314))：测试期动态算力与自适应验证预算分配机制参考。
+- **Self-Debugging (Chen et al. 2023)** ([arXiv:2304.05128](https://arxiv.org/abs/2304.05128))：自动化测试运行器探测与确定性复现脚本合成机制参考。
+- **LATS / Language Agent Tree Search (Zhou et al. 2023)** ([arXiv:2310.04406](https://arxiv.org/abs/2310.04406))：Git 快照检查点与失败分支回滚机制参考。
+- **Agent-as-a-Judge (Zhuge et al. 2024)** ([arXiv:2410.10934](https://arxiv.org/abs/2410.10934))：六维量化标尺权重评分与通过门禁机制参考。
+- **A-MEM / ExpeL (Zhao et al. 2023)** ([arXiv:2308.10144](https://arxiv.org/abs/2308.10144))：关键词智能经验召回与工作区终身记忆库持久化机制参考。
 - **Magentic-One**：停滞自适应与换人诊断机制思路来源。
 - **claude-flow**：多智能体编排边界与共享状态机制参考。
 - **Felix Rieseberg**：顶尖专家四问与激进验收线提议方法参考。
+
 
 ---
 

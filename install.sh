@@ -7,7 +7,7 @@ TARGET="zcode"
 LANG_OPT="auto"
 DRY_RUN=false
 DEST=""
-VERSION="$(cat "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/VERSION" 2>/dev/null || echo "0.3.0")"
+VERSION="$(cat "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/VERSION" 2>/dev/null || echo "0.4.0")"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

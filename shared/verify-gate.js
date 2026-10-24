@@ -301,3 +301,349 @@ export function formatExperienceEntry(entry) {
     "</experience>",
   ].join("\n");
 }
+
+/**
+ * Intelligently retrieves and ranks relevant Harness² experience cues matching
+ * the current task context, replacing naive tail-slicing truncation.
+ * Filters out confounded or low-value cues and ranks by keyword and dimension relevance.
+ */
+export function matchExperienceCues(
+  cueContent = "",
+  taskDescription = "",
+  maxCues = 3,
+) {
+  if (
+    !cueContent ||
+    typeof cueContent !== "string" ||
+    !taskDescription ||
+    typeof taskDescription !== "string" ||
+    typeof maxCues !== "number" ||
+    isNaN(maxCues) ||
+    maxCues <= 0
+  ) {
+    return "";
+  }
+
+  const blockRegex = /<experience>([\s\S]*?)<\/experience>/gi;
+  const blocks = [];
+  let match;
+  while ((match = blockRegex.exec(cueContent)) !== null) {
+    const fullBlock = match[0].trim();
+    const inner = match[1];
+    if (/verdict:\s*(?:confounded|no_observed_effect)/i.test(inner)) {
+      continue;
+    }
+    blocks.push({ full: fullBlock, text: inner });
+  }
+
+  if (blocks.length === 0) {
+    return "";
+  }
+
+  const rawTokens =
+    taskDescription.toLowerCase().match(/[\p{L}\p{N}_\-]+/gu) || [];
+  const STOPWORDS = new Set([
+    "the", "and", "for", "with", "this", "that", "from", "when", "into",
+    "task", "code", "file", "then", "have", "been", "will", "does", "done",
+    "test", "tests", "what", "where", "which", "your", "are", "can", "all",
+    "our", "out", "about", "more", "also", "using", "used", "only", "must",
+    "make", "任务", "请", "的", "和", "在", "与", "了", "按", "将", "并",
+    "及", "到", "为", "对", "以", "等", "从", "个", "项", "用", "做", "后",
+    "中", "进行", "完成", "实现",
+  ]);
+
+  const keywords = [];
+  for (const token of rawTokens) {
+    if (token.length >= 2 && !STOPWORDS.has(token)) {
+      keywords.push(token);
+    }
+  }
+
+  const scored = [];
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    const bText = b.text.toLowerCase();
+    const cueLine = (bText.match(/cue:\s*([^\n]+)/) || [])[1] || "";
+    const lessonLine = (bText.match(/lesson:\s*([^\n]+)/) || [])[1] || "";
+
+    let score = 0;
+    for (const kw of keywords) {
+      if (cueLine.includes(kw)) score += 3;
+      if (lessonLine.includes(kw)) score += 2;
+      if (bText.includes(kw)) score += 1;
+    }
+
+    if (score > 0 && /confidence:\s*high/i.test(bText)) {
+      score += 1;
+    }
+
+    if (score > 0) {
+      scored.push({ block: b.full, score, index: i });
+    }
+  }
+
+  if (scored.length === 0) {
+    return "";
+  }
+
+  scored.sort((a, b) => b.score - a.score || b.index - a.index);
+
+  return scored
+    .slice(0, maxCues)
+    .map((s) => s.block)
+    .join("\n\n");
+}
+
+/**
+ * Evaluates task complexity to dynamically allocate verification rounds and
+ * recommended model profiles (simple -> economy, standard -> hybrid, hard -> quality).
+ * Aligns test-time compute with problem difficulty (Snell et al. 2024).
+ */
+export function evaluateTaskComplexity(
+  task = "",
+  context = "",
+  fileCount = 0,
+) {
+  const cleanTask = String(task || "").trim();
+  const cleanCtx = String(context || "").trim();
+  const safeFileCount =
+    typeof fileCount === "number" && !isNaN(fileCount) && fileCount >= 0
+      ? fileCount
+      : 0;
+
+  if (!cleanTask) {
+    return {
+      complexity: "simple",
+      maxRepairRounds: 2,
+      recommendedProfile: "economy",
+    };
+  }
+
+  const combined = `${cleanTask}\n${cleanCtx}`.toLowerCase();
+
+  const hardKeywords = [
+    "concurrency",
+    "race condition",
+    "deadlock",
+    "distributed",
+    "consensus",
+    "raft",
+    "paxos",
+    "security",
+    "vulnerability",
+    "cve",
+    "privilege escalation",
+    "memory leak",
+    "segfault",
+    "profiling",
+    "ast transformation",
+    "compiler",
+    "transpiler",
+    "state machine",
+    "deep refactor",
+    "architecture",
+    "protocol",
+    "并发",
+    "竞态",
+    "死锁",
+    "分布式",
+    "高可用",
+    "内存泄漏",
+    "段错误",
+    "架构重构",
+    "底层协议",
+    "安全漏洞",
+    "越权",
+  ];
+
+  const simpleKeywords = [
+    "typo",
+    "spelling",
+    "lint",
+    "formatting",
+    "prettier",
+    "eslint",
+    "readme",
+    "changelog",
+    "comment",
+    "docstring",
+    "rename variable",
+    "version bump",
+    "bump version",
+    "拼写",
+    "文档",
+    "注释",
+    "格式化",
+    "代码风格",
+    "版本升级",
+  ];
+
+  let isHard = false;
+  if (safeFileCount >= 5 || combined.length > 1000) {
+    isHard = true;
+  } else {
+    for (const kw of hardKeywords) {
+      if (combined.includes(kw)) {
+        isHard = true;
+        break;
+      }
+    }
+  }
+
+  if (isHard) {
+    return {
+      complexity: "hard",
+      maxRepairRounds: 5,
+      recommendedProfile: "quality",
+    };
+  }
+
+  let isSimple = false;
+  if (safeFileCount <= 1 && combined.length < 200) {
+    for (const kw of simpleKeywords) {
+      if (combined.includes(kw)) {
+        isSimple = true;
+        break;
+      }
+    }
+  }
+
+  if (isSimple) {
+    return {
+      complexity: "simple",
+      maxRepairRounds: 2,
+      recommendedProfile: "economy",
+    };
+  }
+
+  return {
+    complexity: "standard",
+    maxRepairRounds: 3,
+    recommendedProfile: "hybrid",
+  };
+}
+
+/**
+ * Computes a quantitative 6-criterion Harness² conformance and quality score (0-100).
+ * Criteria: DELIVERY, CONFORMANCE, FIDELITY, INTERNAL_CONSISTENCY, OPERATIONAL_FITNESS, FINISH.
+ * Applies severity-based deductions and determines pass/fail status.
+ */
+export function calculateYardstickScore(
+  findings = [],
+  customWeights = null,
+) {
+  const scores = {
+    delivery: 100,
+    conformance: 100,
+    fidelity: 100,
+    internalConsistency: 100,
+    operationalFitness: 100,
+    finish: 100,
+  };
+
+  const weights = {
+    delivery: 1 / 6,
+    conformance: 1 / 6,
+    fidelity: 1 / 6,
+    internalConsistency: 1 / 6,
+    operationalFitness: 1 / 6,
+    finish: 1 / 6,
+  };
+
+  if (customWeights && typeof customWeights === "object") {
+    let sum = 0;
+    const keys = [
+      "delivery",
+      "conformance",
+      "fidelity",
+      "internalConsistency",
+      "operationalFitness",
+      "finish",
+    ];
+    for (const k of keys) {
+      if (typeof customWeights[k] === "number" && customWeights[k] >= 0) {
+        sum += customWeights[k];
+      }
+    }
+    if (sum > 0) {
+      for (const k of keys) {
+        if (typeof customWeights[k] === "number" && customWeights[k] >= 0) {
+          weights[k] = customWeights[k] / sum;
+        }
+      }
+    }
+  }
+
+  const safeFindings = Array.isArray(findings) ? findings : [];
+  const deductions = [];
+  let hasHighSeverity = false;
+
+  for (const f of safeFindings) {
+    if (!f || typeof f !== "object") continue;
+
+    const sev = String(f.severity || "medium").trim().toLowerCase();
+    let penalty = 15;
+    if (sev === "high") {
+      penalty = 40;
+      hasHighSeverity = true;
+    } else if (sev === "low") {
+      penalty = 5;
+    }
+
+    let criterion = "operationalFitness";
+    const explicitCrit = String(f.criterion || "").trim().toLowerCase();
+
+    if (explicitCrit.includes("deliv")) {
+      criterion = "delivery";
+    } else if (explicitCrit.includes("conform")) {
+      criterion = "conformance";
+    } else if (explicitCrit.includes("fidel")) {
+      criterion = "fidelity";
+    } else if (explicitCrit.includes("consist")) {
+      criterion = "internalConsistency";
+    } else if (explicitCrit.includes("fit")) {
+      criterion = "operationalFitness";
+    } else if (explicitCrit.includes("finish")) {
+      criterion = "finish";
+    } else {
+      const text = `${f.what || ""} ${f.evidence || ""}`.toLowerCase();
+      if (/missing file|feature missing|not delivered|未交付|缺失|遗漏/.test(text)) {
+        criterion = "delivery";
+      } else if (/signature|schema|contract|extra field|unrequested|契约|结构|擅自/.test(text)) {
+        criterion = "conformance";
+      } else if (/fabricat|hallucinat|unverified|false claim|编造|虚假|不实/.test(text)) {
+        criterion = "fidelity";
+      } else if (/type error|import|export|mismatch|前后不一致|类型不匹配/.test(text)) {
+        criterion = "internalConsistency";
+      } else if (/todo|placeholder|stub|mock|占位符|未完|桩代码/.test(text)) {
+        criterion = "finish";
+      }
+    }
+
+    scores[criterion] = Math.max(0, scores[criterion] - penalty);
+    deductions.push({
+      criterion,
+      severity: sev,
+      reason: f.what || "Finding deduction",
+      penalty,
+    });
+  }
+
+  const overallScore = Math.round(
+    scores.delivery * weights.delivery +
+      scores.conformance * weights.conformance +
+      scores.fidelity * weights.fidelity +
+      scores.internalConsistency * weights.internalConsistency +
+      scores.operationalFitness * weights.operationalFitness +
+      scores.finish * weights.finish,
+  );
+
+  const passed = overallScore >= 80 && !hasHighSeverity;
+
+  return {
+    overallScore,
+    passed,
+    breakdown: scores,
+    deductions,
+  };
+}

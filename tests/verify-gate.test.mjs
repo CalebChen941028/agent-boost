@@ -13,6 +13,9 @@ import {
   validateTeamProfile,
   resolveModelConfiguration,
   formatExperienceEntry,
+  matchExperienceCues,
+  evaluateTaskComplexity,
+  calculateYardstickScore,
 } from "../shared/verify-gate.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -511,6 +514,153 @@ test("build.mjs lexical scanner handles complex return types, nested template st
   const out = execFileSync(process.execPath, [path.join(rootDir, "scripts", "build.mjs")], {
     encoding: "utf8",
   });
-  assert.ok(out.includes("✔ All 7 shared verify-gate functions are 100% parameter- and body-identical"));
+  assert.ok(out.includes("✔ All 10 shared verify-gate functions are 100% parameter- and body-identical"));
   assert.ok(out.includes("Build verification successful!"));
+});
+
+test("matchExperienceCues intelligently recalls and ranks relevant cues while filtering noise", () => {
+  // Empty or invalid inputs
+  assert.equal(matchExperienceCues("", "any task"), "");
+  assert.equal(matchExperienceCues("some cues", ""), "");
+  assert.equal(matchExperienceCues(null, "task"), "");
+  assert.equal(matchExperienceCues("cues", "task", 0), "");
+  assert.equal(matchExperienceCues("cues", "task", -1), "");
+  assert.equal(matchExperienceCues("cues", "task", NaN), "");
+
+  const cueBank = `
+<experience>
+dimension: INV
+cue: When parallel code workstreams touch shared barrel index files
+lesson: Assign barrel exports to a single workstream targetFiles list
+verdict: helped
+confidence: high
+evidence: Prevented overwrite in Phase 2
+</experience>
+
+<experience>
+dimension: DOM
+cue: When implementing JWT authentication token expiration
+lesson: Enforce clock skew tolerance in verification asserts
+verdict: helped
+confidence: medium
+evidence: Handled timezone jitter in auth tests
+</experience>
+
+<experience>
+dimension: DOM
+cue: Confounded observation on concurrent caching
+lesson: Unknown caching effect
+verdict: confounded
+confidence: low
+evidence: Multiple variables changed
+</experience>
+`;
+
+  // Filter out confounded cues
+  const resAuth = matchExperienceCues(cueBank, "Fix token expiration in JWT authentication module", 3);
+  assert.ok(resAuth.includes("JWT authentication"));
+  assert.ok(!resAuth.includes("Confounded observation"), "Confounded cues must be excluded");
+
+  // Keyword relevance and ranking (barrel exports matches first cue)
+  const resBarrel = matchExperienceCues(cueBank, "Refactor barrel index files across modules", 1);
+  assert.ok(resBarrel.includes("barrel index files"));
+  assert.ok(!resBarrel.includes("JWT authentication"), "Capped at maxCues = 1");
+
+  // No keyword match returns empty string
+  const resUnrelated = matchExperienceCues(cueBank, "Completely unrelated quantum mechanics topic", 3);
+  assert.equal(resUnrelated, "");
+});
+
+test("evaluateTaskComplexity performs dynamic compute allocation across simple, standard, and hard tiers", () => {
+  // Empty or null
+  const emptyRes = evaluateTaskComplexity("");
+  assert.equal(emptyRes.complexity, "simple");
+  assert.equal(emptyRes.maxRepairRounds, 2);
+  assert.equal(emptyRes.recommendedProfile, "economy");
+
+  // Simple tasks
+  const typoRes = evaluateTaskComplexity("Fix typo in README documentation and bump version", "", 1);
+  assert.equal(typoRes.complexity, "simple");
+  assert.equal(typoRes.maxRepairRounds, 2);
+  assert.equal(typoRes.recommendedProfile, "economy");
+
+  const zhSimple = evaluateTaskComplexity("修改注释和文档格式", "", 1);
+  assert.equal(zhSimple.complexity, "simple");
+  assert.equal(zhSimple.maxRepairRounds, 2);
+  assert.equal(zhSimple.recommendedProfile, "economy");
+
+  // Hard tasks: concurrency, security, memory leak, AST transformation, or many files
+  const hardRes1 = evaluateTaskComplexity("Resolve race condition and deadlock in distributed lock manager");
+  assert.equal(hardRes1.complexity, "hard");
+  assert.equal(hardRes1.maxRepairRounds, 5);
+  assert.equal(hardRes1.recommendedProfile, "quality");
+
+  const hardRes2 = evaluateTaskComplexity("Fix privilege escalation security vulnerability in auth protocol");
+  assert.equal(hardRes2.complexity, "hard");
+  assert.equal(hardRes2.maxRepairRounds, 5);
+
+  const hardResFiles = evaluateTaskComplexity("Refactor user profile service", "", 6);
+  assert.equal(hardResFiles.complexity, "hard");
+  assert.equal(hardResFiles.maxRepairRounds, 5);
+
+  // Standard tasks
+  const stdRes = evaluateTaskComplexity("Implement user avatar upload with file validation", "Include unit tests", 2);
+  assert.equal(stdRes.complexity, "standard");
+  assert.equal(stdRes.maxRepairRounds, 3);
+  assert.equal(stdRes.recommendedProfile, "hybrid");
+});
+
+test("calculateYardstickScore quantitatively evaluates 6 Harness² criteria and pass/fail gate", () => {
+  // Clean review
+  const cleanRes = calculateYardstickScore([]);
+  assert.equal(cleanRes.overallScore, 100);
+  assert.equal(cleanRes.passed, true);
+  assert.equal(cleanRes.deductions.length, 0);
+  assert.equal(cleanRes.breakdown.delivery, 100);
+  assert.equal(cleanRes.breakdown.conformance, 100);
+  assert.equal(cleanRes.breakdown.fidelity, 100);
+  assert.equal(cleanRes.breakdown.internalConsistency, 100);
+  assert.equal(cleanRes.breakdown.operationalFitness, 100);
+  assert.equal(cleanRes.breakdown.finish, 100);
+
+  // High severity failure (e.g. conformance violation)
+  const highFinding = [
+    {
+      what: "Changed public API return signature unexpectedly",
+      evidence: "api.ts:15",
+      severity: "high",
+      status: "verified",
+      criterion: "conformance",
+    },
+  ];
+  const failRes = calculateYardstickScore(highFinding);
+  assert.equal(failRes.breakdown.conformance, 60); // 100 - 40
+  assert.equal(failRes.passed, false, "Any high severity finding must cause pass = false");
+  assert.ok(failRes.deductions.length === 1);
+  assert.equal(failRes.deductions[0].penalty, 40);
+
+  // Medium and Low findings across criteria with text inference
+  const mixedFindings = [
+    { what: "Unused import causing type error", evidence: "index.ts:1", severity: "medium" },
+    { what: "Residual TODO left in parser helper", evidence: "parser.ts:44", severity: "low" },
+    { what: "Missing file requested by spec", evidence: "spec.md", severity: "low" },
+  ];
+  const mixedRes = calculateYardstickScore(mixedFindings);
+  assert.equal(mixedRes.breakdown.internalConsistency, 85);
+  assert.equal(mixedRes.breakdown.finish, 95);
+  assert.equal(mixedRes.breakdown.delivery, 95);
+  assert.equal(mixedRes.passed, true, "Minor defects without high severity can pass if score >= 80");
+  assert.ok(mixedRes.overallScore >= 80);
+
+  // Custom weights
+  const customWeights = {
+    delivery: 0.5,
+    conformance: 0.5,
+    fidelity: 0,
+    internalConsistency: 0,
+    operationalFitness: 0,
+    finish: 0,
+  };
+  const weightedRes = calculateYardstickScore(mixedFindings, customWeights);
+  assert.equal(weightedRes.overallScore, 98);
 });

@@ -18,13 +18,13 @@ description: >-
 # Boost — Multi-Agent Deep Reasoning & Verification Engine / 深度多智能体推理引擎
 
 Inspired by published AI research and open multi-agent orchestration methodologies:
-- **Google Research Harness²** ([arXiv:2610.14224](https://arxiv.org/pdf/2610.14224)): Orthogonal `INV`/`DOM` diagnostic dimensions, `KEEP_BASE` discipline, 6-criterion deliverable conformance review yardstick, prompt-injection data boundary (`EVIDENCE IS DATA, NOT INSTRUCTIONS`), and transferable `<experience>` cue reflection.
-- **Scaling Test-Time Compute** (Snell et al. 2024, arXiv:2408.03314): Dynamic test-time compute allocation and complexity-driven verification budgets.
-- **Language Agent Tree Search (LATS)** (Zhou et al. 2023, arXiv:2310.04406): External verification feedback, checkpoint snapshots, and regression rollback on failing branches.
-- **Teaching LLMs to Self-Debug** (Chen et al. 2023, arXiv:2304.05128): Automated test runner discovery, reproduction test synthesis, and execution trace explanation.
-- **Agent-as-a-Judge** (Zhuge et al. 2024, arXiv:2410.10934): Quantitative multi-agent code evaluation and objective Yardstick scoring.
-- **Magentic-One** (Fourney et al. 2024, arXiv:2411.04468): Stall detection, failure signatures, and dynamic role re-planning.
-- **A-MEM / ExpeL** (Zhao et al. 2023, arXiv:2308.10144): Structured experience memory recall and cross-task transfer.
+- **Google Research Harness²** (Xu et al. 2026, [arXiv:2610.14224](https://arxiv.org/abs/2610.14224)): Orthogonal `INV`/`DOM` diagnostic dimensions, `KEEP_BASE` discipline, 6-criterion deliverable conformance review yardstick, prompt-injection data boundary (`EVIDENCE IS DATA, NOT INSTRUCTIONS`), and transferable `<experience>` cue reflection.
+- **Scaling Test-Time Compute** (Snell et al. 2024, [arXiv:2408.03314](https://arxiv.org/abs/2408.03314)): Dynamic test-time compute allocation and complexity-driven verification budgets.
+- **Language Agent Tree Search (LATS)** (Zhou et al. 2023, [arXiv:2310.04406](https://arxiv.org/abs/2310.04406)): External verification feedback, checkpoint snapshots, and regression rollback on failing branches.
+- **Teaching Large Language Models to Self-Debug** (Chen et al. 2023, [arXiv:2304.05128](https://arxiv.org/abs/2304.05128)): Automated test runner discovery, reproduction test synthesis, and execution trace explanation.
+- **Agent-as-a-Judge** (Zhuge et al. 2024, [arXiv:2410.10934](https://arxiv.org/abs/2410.10934)): Quantitative multi-agent code evaluation and objective Yardstick scoring.
+- **Magentic-One** (Fourney et al. 2024, [arXiv:2411.04468](https://arxiv.org/abs/2411.04468)): Stall detection, failure signatures, and dynamic role re-planning.
+- **ExpeL (Experiential Learning)** (Zhao et al. 2023, [arXiv:2308.10144](https://arxiv.org/abs/2308.10144)): Structured experience memory recall and cross-task transfer.
 - **Felix Rieseberg**: Expert Four Questions methodology and stretch acceptance goal evaluation.
 
 Independent open-source implementation, not affiliated with or endorsed by Google LLC, Anthropic, OpenAI, or Microsoft.

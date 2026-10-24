@@ -148,13 +148,13 @@ npm test
 
 ## Credits & Acknowledgments
 
-- **Google Research Harness²** ([arXiv:2610.14224](https://arxiv.org/pdf/2610.14224)): Inspired the `INV`/`DOM` orthogonal diagnostic dimensions, `KEEP_BASE` anti-regression discipline, 6-criterion conformance review yardstick, `EVIDENCE IS DATA` boundary, and transferable `<experience>` cue reflection.
+- **Google Research Harness² (Xu et al. 2026)** ([arXiv:2610.14224](https://arxiv.org/abs/2610.14224)): Inspired by *"Harness^2: Recursive Agent Harnessing for an Open World"* (Google Cloud AI Research), featuring `INV`/`DOM` orthogonal diagnostic dimensions, `KEEP_BASE` anti-regression discipline, 6-criterion conformance review yardstick, `EVIDENCE IS DATA` boundary, and transferable `<experience>` cue reflection.
 - **Scaling Test-Time Compute (Snell et al. 2024)** ([arXiv:2408.03314](https://arxiv.org/abs/2408.03314)): Dynamic test-time compute allocation across task complexity tiers.
 - **Self-Debugging (Chen et al. 2023)** ([arXiv:2304.05128](https://arxiv.org/abs/2304.05128)): Automated test discovery and deterministic reproduction test synthesis (`verify_synth.sh`).
 - **LATS / Language Agent Tree Search (Zhou et al. 2023)** ([arXiv:2310.04406](https://arxiv.org/abs/2310.04406)): Git checkpoint snapshotting and regression rollback on failing repair branches.
 - **Agent-as-a-Judge (Zhuge et al. 2024)** ([arXiv:2410.10934](https://arxiv.org/abs/2410.10934)): Quantitative Yardstick 6-criterion weighted scoring (`calculateYardstickScore`).
-- **A-MEM / ExpeL (Zhao et al. 2023)** ([arXiv:2308.10144](https://arxiv.org/abs/2308.10144)): Keyword/tag experience cue retrieval (`matchExperienceCues`) and lifelong workspace memory persistence (`.agent-boost/experiences.md`).
-- **Magentic-One**: Inspired the stall-detection root-cause re-planning pattern and failure diagnostics.
+- **ExpeL / Experiential Learning (Zhao et al. 2023)** ([arXiv:2308.10144](https://arxiv.org/abs/2308.10144)): Keyword/tag experience cue retrieval (`matchExperienceCues`) and lifelong workspace memory persistence (`.agent-boost/experiences.md`).
+- **Magentic-One (Fourney et al. 2024)** ([arXiv:2411.04468](https://arxiv.org/abs/2411.04468)): Inspired the stall-detection root-cause re-planning pattern and failure diagnostics.
 - **claude-flow**: Architectural references for multi-agent shared state and orchestration boundaries.
 - **Felix Rieseberg**: Conceptual inspiration for the Expert Four Questions method and stretch acceptance goal evaluation.
 

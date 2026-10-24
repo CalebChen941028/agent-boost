@@ -358,12 +358,13 @@ runner 仅在 12 项 boost 任务全部通过时以 0 退出，可直接接入 C
 
 ## 10. 学术参考文献与致谢
 
-- **BugsJS**：Gyimesi et al., *"BugsJS: A Benchmark of JavaScript Bugs"*, MSR/ICSE 2019.
-- **SWE-bench / SWE-bench Verified**：Jimenez et al., *"SWE-bench: Can Language Models Resolve Real-World GitHub Issues?"*, ICLR 2024; Princeton NLP & OpenAI (2024).
-- **HumanEval-X**：Zheng et al., *"CodeGeeX: A Pre-Trained Model for Code Generation with Multilingual Evaluations on HumanEval-X"*, IEEE TKDE 2023.
-- **Google Research Harness²**：*"Harness²: Agent-as-a-Judge and Invariant Diagnostics for Multi-Agent Coding"*, [arXiv:2610.14224](https://arxiv.org/pdf/2610.14224)。正交 `INV`/`DOM` 诊断维度、`KEEP_BASE` 防折腾纪律、六维合格度标尺与可迁移 `<experience>` 经验卡片。
-- **Scaling Test-Time Compute**：Snell et al., *"Scaling LLM Test-Time Compute Optimally can be More Effective than Scaling Model Parameters"*, [arXiv:2408.03314](https://arxiv.org/abs/2408.03314).
-- **Language Agent Tree Search (LATS)**：Zhou et al., ICML 2024, [arXiv:2310.04406](https://arxiv.org/abs/2310.04406)。失败修复分支的检查点快照与回滚。
-- **Teaching LLMs to Self-Debug**：Chen et al., ICLR 2024, [arXiv:2304.05128](https://arxiv.org/abs/2304.05128)。自动化测试发现与复现测试合成（`verify_synth.sh`）。
-- **Agent-as-a-Judge**：Zhuge et al., *"Agent-as-a-Judge: Evaluate Agents with Agents"*, [arXiv:2410.10934](https://arxiv.org/abs/2410.10934)。六维加权打分（`calculateYardstickScore`）。
-- **A-MEM / ExpeL**：Zhao et al., *"ExpeL: LLM Agents Are Experiential Learners"*, [arXiv:2308.10144](https://arxiv.org/abs/2308.10144)。经验线索检索（`matchExperienceCues`）与终身记忆（`.agent-boost/experiences.md`）。
+- **BugsJS**：Péter Gyimesi et al., *"BugsJS: A Benchmark of JavaScript Bugs"*, IEEE/ACM International Conference on Mining Software Repositories (MSR) / ICSE 2019, [DOI:10.1109/MSR.2019.00024](https://doi.org/10.1109/MSR.2019.00024)。Node.js 权威缺陷基准，覆盖真实工程故障。
+- **SWE-bench / SWE-bench Verified**：Carlos E. Jimenez et al., *"SWE-bench: Can Language Models Resolve Real-World GitHub Issues?"*, ICLR 2024, [arXiv:2310.06770](https://arxiv.org/abs/2310.06770)；Princeton NLP & OpenAI, *"SWE-bench Verified: Resolving Real-World GitHub Issues with Verified Annotations"* (2024)。
+- **HumanEval-X**：Qinkai Zheng et al., *"CodeGeeX: A Pre-Trained Model for Code Generation with Multilingual Benchmarking on HumanEval-X"*, IEEE Transactions on Knowledge and Data Engineering (TKDE) 2023, [arXiv:2303.17568](https://arxiv.org/abs/2303.17568)。多语言代码生成与算法状态机基准。
+- **Google Research Harness²**：Ruiyao Xu et al. (Google Cloud AI Research), *"Harness^2: Recursive Agent Harnessing for an Open World"*, [arXiv:2610.14224](https://arxiv.org/abs/2610.14224)。双层递归 Harness 自进化框架、`INV`/`DOM` 双维度正交根因诊断、`KEEP_BASE` 反盲动纪律、六维交付物保真标尺与 `<experience>` 跨任务经验卡片。
+- **Scaling Test-Time Compute**：Charlie Snell, Jaehoon Lee, Kelvin Xu, Aviral Kumar, *"Scaling LLM Test-Time Compute Optimally can be More Effective than Scaling Model Parameters"*, [arXiv:2408.03314](https://arxiv.org/abs/2408.03314)。动态测试期算力分配与任务复杂度自适应验证预算机制。
+- **Language Agent Tree Search (LATS)**：Andy Zhou, Kai Yan, Michal Shlapentokh-Rothman, Haohan Wang, Yu-Xiong Wang, *"Language Agent Tree Search Unifies Reasoning Acting and Planning in Language Models"*, ICML 2024, [arXiv:2310.04406](https://arxiv.org/abs/2310.04406)。外部环境反馈、Git 快照检查点与失败分支回滚机制。
+- **Teaching Large Language Models to Self-Debug**：Xinyun Chen, Maxwell Lin, Nathanael Schärli, Denny Zhou, *"Teaching Large Language Models to Self-Debug"*, ICLR 2024, [arXiv:2304.05128](https://arxiv.org/abs/2304.05128)。自动化测试运行器探测与确定性复现测试脚本合成机制（`verify_synth.sh`）。
+- **Agent-as-a-Judge**：Mingchen Zhuge et al., *"Agent-as-a-Judge: Evaluate Agents with Agents"*, [arXiv:2410.10934](https://arxiv.org/abs/2410.10934)。六维加权量化裁判（`calculateYardstickScore`）与独立验收门禁机制。
+- **ExpeL (Experiential Learning)**：Andrew Zhao, Daniel Huang, Quentin Xu, Matthieu Lin, Yong-Jin Liu, Gao Huang, *"ExpeL: LLM Agents Are Experiential Learners"*, AAAI 2024, [arXiv:2308.10144](https://arxiv.org/abs/2308.10144)。结构化经验检索与终身工作区记忆持久化机制（`matchExperienceCues` 与 `.agent-boost/experiences.md`）。
+- **Magentic-One**：Adam Fourney et al. (Microsoft Research), *"Magentic-One: A Generalist Multi-Agent System for Solving Complex Tasks"*, [arXiv:2411.04468](https://arxiv.org/abs/2411.04468)。停滞检测、失败指纹提取与动态角色换人重规划。

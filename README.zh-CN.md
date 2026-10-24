@@ -148,13 +148,13 @@ npm test
 
 ## 致谢与参考
 
-- **Google Research Harness²** ([arXiv:2610.14224](https://arxiv.org/pdf/2610.14224))：`INV`/`DOM` 双维度正交解耦、`KEEP_BASE` 反劣化准则、六维交付物保真标尺、证据数据边界与 `<experience>` 跨任务经验卡片机制来源。
+- **Google Research Harness² (Xu et al. 2026)** ([arXiv:2610.14224](https://arxiv.org/abs/2610.14224))：参考 Google Cloud AI Research *"Harness^2: Recursive Agent Harnessing for an Open World"*，融合 `INV`/`DOM` 双维度正交解耦、`KEEP_BASE` 反盲动纪律、六维交付物保真标尺、证据数据边界与 `<experience>` 跨任务经验卡片机制。
 - **Scaling Test-Time Compute (Snell et al. 2024)** ([arXiv:2408.03314](https://arxiv.org/abs/2408.03314))：测试期动态算力与自适应验证预算分配机制参考。
 - **Self-Debugging (Chen et al. 2023)** ([arXiv:2304.05128](https://arxiv.org/abs/2304.05128))：自动化测试运行器探测与确定性复现脚本合成机制参考。
 - **LATS / Language Agent Tree Search (Zhou et al. 2023)** ([arXiv:2310.04406](https://arxiv.org/abs/2310.04406))：Git 快照检查点与失败分支回滚机制参考。
 - **Agent-as-a-Judge (Zhuge et al. 2024)** ([arXiv:2410.10934](https://arxiv.org/abs/2410.10934))：六维量化标尺权重评分与通过门禁机制参考。
-- **A-MEM / ExpeL (Zhao et al. 2023)** ([arXiv:2308.10144](https://arxiv.org/abs/2308.10144))：关键词智能经验召回与工作区终身记忆库持久化机制参考。
-- **Magentic-One**：停滞自适应与换人诊断机制思路来源。
+- **ExpeL / Experiential Learning (Zhao et al. 2023)** ([arXiv:2308.10144](https://arxiv.org/abs/2308.10144))：关键词智能经验召回与工作区终身记忆库持久化机制参考。
+- **Magentic-One (Fourney et al. 2024)** ([arXiv:2411.04468](https://arxiv.org/abs/2411.04468))：停滞自适应与换人诊断机制思路来源。
 - **claude-flow**：多智能体编排边界与共享状态机制参考。
 - **Felix Rieseberg**：顶尖专家四问与激进验收线提议方法参考。
 

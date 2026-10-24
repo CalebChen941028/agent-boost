@@ -25,6 +25,31 @@ export interface ExperienceCue {
   evidence: string;
 }
 
+export interface TaskComplexityResult {
+  complexity: "simple" | "standard" | "hard";
+  maxRepairRounds: number;
+  recommendedProfile: "economy" | "hybrid" | "quality";
+}
+
+export interface YardstickScoreResult {
+  overallScore: number;
+  passed: boolean;
+  breakdown: {
+    delivery: number;
+    conformance: number;
+    fidelity: number;
+    internalConsistency: number;
+    operationalFitness: number;
+    finish: number;
+  };
+  deductions: Array<{
+    criterion: string;
+    severity: string;
+    reason: string;
+    penalty: number;
+  }>;
+}
+
 export declare function formatFailureOutput(stdout?: string, stderr?: string, maxLength?: number): string;
 export declare function computeFailureSignature(output: string): string;
 export declare function detectTargetFileConflicts(workstreams?: WorkstreamLike[]): FileConflict[];
@@ -42,3 +67,20 @@ export declare function resolveModelConfiguration(
   localConfig?: any,
 ): { modelId: string | null; tier: "light" | "heavy" | "default" };
 export declare function formatExperienceEntry(entry?: ExperienceCue | null): string;
+
+export declare function matchExperienceCues(
+  cueContent?: string,
+  taskDescription?: string,
+  maxCues?: number,
+): string;
+
+export declare function evaluateTaskComplexity(
+  task?: string,
+  context?: string,
+  fileCount?: number,
+): TaskComplexityResult;
+
+export declare function calculateYardstickScore(
+  findings?: FindingLike[],
+  customWeights?: any,
+): YardstickScoreResult;

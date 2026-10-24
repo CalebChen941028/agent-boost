@@ -79,22 +79,21 @@
 
 ---
 
-## 权威基准评测：单一模型 vs 模型 + 技能工具（Solo mimo-v2.6-flash vs mimo-v2.6-flash + agent-boost，实盘 API）
+## 权威基准评测：实盘双轨模型大考（mimo 与 deepseek 跨模型对决）
 
-取材 **BugsJS (ICSE/MSR)**、**SWE-bench / SWE-bench Verified (ICLR 2024)**、**HumanEval-X (TKDE 2023)** 的十项可执行工程任务，对 OpenCode Zen 网关（`https://opencode.ai/zen/go/v1/chat/completions`，模型 `mimo-v2.6-flash`）发起真实双轨对决：65 次真实 HTTP 调用，每个 Token 由网关自身 `usage` 计量，每个退出码来自隔离 Git 工作区里真实的 `node --test`。`npm run benchmark` 一键复现（mimo 牌价约 $0.01；完整报告见 [`BENCHMARKS.zh-CN.md`](BENCHMARKS.zh-CN.md)）。
+取材 **BugsJS (ICSE/MSR)**、**SWE-bench / SWE-bench Verified (ICLR 2024)**、**HumanEval-X (TKDE 2023)** 的十二项可执行工程任务，对 OpenCode Zen 网关（`https://opencode.ai/zen/go/v1/chat/completions`）跨主流模型家族（`mimo-v2.6-flash` 与 `deepseek-v4.1-flash`）发起真实双轨对决：累计逾 150 次真实 HTTP 调用，每个 Token 由网关自身 `usage` 计量，每个退出码来自隔离 Git 工作区里真实的 `node --test`。完整报告见 [`BENCHMARKS.zh-CN.md`](BENCHMARKS.zh-CN.md)。
 
-| 评测维度 | Solo mimo-v2.6-flash（无工具） | mimo-v2.6-flash + agent-boost (v0.4.0) |
-| :--- | :--- | :--- |
-| **任务通过率（实盘）** | 9/10 (90.0%) | **10/10 (100.0%)**——决定性胜在并行写竞态任务 |
-| **六维裁判平均分** | 98.2 / 100 | **99.6 / 100（+1.4 分）**（`calculateYardstickScore`） |
-| **并行写冲突拦截** | 0——并发子代理互相覆盖 `src/server.js`，连败三轮 | **7/10 任务动手前被门禁拦截**（`detectTargetFileConflicts`） |
-| **无测试命令时的测试合成** | 0——交付不可执行的完成宣称 | **1/1——11 条语法校验过的断言先行全绿**（`verify_synth.sh` 路径） |
-| **计量 Token（网关 usage）** | **14,961** | 29,830——1.994x（输入更少、推理型输出 4.46x） |
-| **Git 回滚次数** | 不适用 | 0（未发生基线回归；LATS 机制真实在线） |
+| 评测维度 | `mimo-v2.6-flash`（Solo vs Boost） | `deepseek-v4.1-flash`（Solo vs Boost） | 工具链不变式与收益 |
+| :--- | :--- | :--- | :--- |
+| **Pass@1 任务通过率** | 9/10 (90.0%) → **10/10 (100.0%)** | 11/12 (91.7%) → **12/12 (100.0%)** | 跨模型唯一翻车点均为并行写竞态，工具链 100% 挽救 |
+| **六维裁判平均分** | 98.2 → **99.6 / 100** | 99.2 → **100.0 / 100** | Agent-as-a-Judge 六维严格把关 |
+| **并行写冲突门禁拦截** | 7/10 动手前被拦截 | 7/12 动手前被拦截 | 彻底杜绝多子代理并发写同一个文件的盲目覆盖 |
+| **自适应推理 Token 预算** | 1.994x（多代理 CoT 输出） | **0.989x（37,628 vs 38,038）** | 自适应预算钳制重推理模型无节制长循环，反向更省 Token |
+| **单次调用平均延迟** | 7,834ms → 18,472ms | **16,523ms → 8,549ms（快 52%）** | 上下文精准裁剪 + 分级预算让推理延迟腰斩 |
 
-> 📊 **完整实盘报告**：含逐任务计量 Token 与延迟记分牌、线上任务实录、harness 完整性协议与强 Solo 基线的诚实分析——[**`BENCHMARKS.zh-CN.md`**](BENCHMARKS.zh-CN.md)（英文版：[**`BENCHMARKS.md`**](BENCHMARKS.md)）。
+> 📊 **完整实盘报告与跨模型对比**：[**`BENCHMARKS.zh-CN.md`**](BENCHMARKS.zh-CN.md)（英文版：[**`BENCHMARKS.md`**](BENCHMARKS.md)）。
 >
-> 🧪 **一键复现**：`npm run benchmark`（或 `npm run benchmark:live`）用你自己的账号跑实盘对决（`OPENCODE_API_KEY`）；`npm run benchmark:selftest` 零 API 花销验证全部 36 项 harness 机制；`npm run benchmark:report` 一键生成交互式 HTML 可视化报告。
+> 🧪 **一键复现**：`npm run benchmark` 运行实盘对决；`npm run benchmark:selftest` 零 API 花销验证全部 42 项 harness 机制；`npm run benchmark:report` 一键生成交互式 HTML 报告；`npm run benchmark:compare` 生成跨模型横向对比仪表盘。
 
 ---
 

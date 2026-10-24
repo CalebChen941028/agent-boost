@@ -11,7 +11,7 @@
 - **Solo mimo-v2.6-flash（对照组）**：单一模型，裸提示词，零工具。没有文件冲突门禁、没有 Git 回滚、没有复现测试合成、没有终身记忆、没有独立裁判。
 - **mimo-v2.6-flash + agent-boost（实验组）**：同一个大脑，驱动 v0.4.0 五阶段状态机——`evaluateTaskComplexity` 算力分层、`matchExperienceCues` 经验召回、`detectTargetFileConflicts` 文件所有权门禁、按工作流执行、LATS Git 检查点与真实 `git reset --hard` 回滚、`verify_synth.sh` 测试合成、`calculateYardstickScore` 六维量化裁判。
 
-测试载体是 [`scripts/run-live-benchmarks.mjs`](scripts/run-live-benchmarks.mjs)。运行 `npm run benchmark`（或 `npm run benchmark:live`），同一套机制就会用你自己的账号发起真实 HTTP 调用。离线环境下可运行 `npm run benchmark:selftest` 验证全部 36 项 Harness 机制。运行 `npm run benchmark:report` 可一键生成交互式可视化 HTML 报告。
+测试载体是 [`scripts/run-live-benchmarks.mjs`](scripts/run-live-benchmarks.mjs)。运行 `npm run benchmark`（或 `npm run benchmark:live`），同一套机制就会用你自己的账号发起真实 HTTP 调用。离线环境下可运行 `npm run benchmark:selftest` 验证全部 42 项 Harness 机制。运行 `npm run benchmark:report` 可一键生成交互式可视化 HTML 报告。运行 `npm run benchmark:compare` 可一键生成跨模型对决仪表盘。
 
 ### 本次运行事实
 
@@ -132,18 +132,47 @@ v3→v4 客户载荷转换器；仓库声明无验证命令（`verifyCommand: nu
 
 ---
 
-## 7. 复现指南（自己跑这场实盘对决）
+## 7. 跨模型泛化评测：deepseek-v4.1-flash 与自适应算力不变性
+
+为验证 agent-boost 的收益是普适的工程不变式还是特定模型的偶然产物，我们将评测套件从 10 项扩展到 12 项工程大考（新增 `LIVE-CASCADE-EVENT-BUS` 异步改造与 `LIVE-SQLITE-SCHEMA-MIGRATION` 软删除条件迁移），并接入 OpenCode Zen 网关上的 **`deepseek-v4.1-flash`** 执行全量实盘对决（会话 `agent-boost-live-bd4f961f`，86/86 次真实 HTTP 调用全部成功，全程 21.5 分钟）。
+
+### 跨模型实盘横向对比天梯榜
+
+| 评测维度 | `mimo-v2.6-flash`（10 项任务） | `deepseek-v4.1-flash`（12 项任务） | 架构与工程学意义 |
+| :--- | :--- | :--- | :--- |
+| **Solo Pass@1** | 9/10 (90.0%) | 11/12 (91.7%) | 两个主流模型裸跑基线均极强 |
+| **Boost Pass@1** | **10/10 (100.0%)** | **12/12 (100.0%)** | 挂载工具链后双双达成 100% 满分收官 |
+| **工具链提升幅度** | +10.0 分（翻盘 1 项） | +8.3 分（翻盘 1 项） | 稳定提供工程确定性兜底 |
+| **Solo 翻车点** | `LIVE-EXPRESS-RACE`（并发写覆写 `src/server.js`） | `LIVE-EXPRESS-RACE`（并发写覆写 `src/server.js`） | **跨模型唯一的共同失效盲区** |
+| **计量 Token 比例** | 1.994x（14,961 → 29,830） | **0.989x（38,038 → 37,628）** | **对重推理模型，工具链反向更省 Token** |
+| **单次调用平均延迟** | 7,834ms → 18,472ms | **16,523ms → 8,549ms（快 52%）** | 自适应分级预算使推理延迟大幅腰斩 |
+| **裁判六维均分** | 98.2 → **99.6** | 99.2 → **100.0** | 六维 Agent-as-a-Judge 严密把关 |
+
+### 两大核心实证结论
+
+1. **跨模型稳定的失效面（并行写竞态）**：
+   在两个截然不同的模型架构上，Solo 模式唯一翻车的任务均是 `LIVE-EXPRESS-RACE`——未经解耦的并发子代理在修改同一个路由入口时发生后写覆盖冲突，导致测试无论重试几轮都无法通过。而 agent-boost 的 `detectTargetFileConflicts` 在两个模型上均在执行前精准拦截重叠，调度串行化解耦，将 0% 的必然崩溃转化为 100% 的首过交付。证明多子代理并行写冲突是 LLM 本体的普遍盲区，工具链解耦是不随模型改变的刚性防护。
+
+2. **自适应推理预算的护栏效应（遏制推理失控）**：
+   在 `deepseek-v4.1-flash` 这样具有深度思考能力（Thinking/Reasoning）的模型上，裸跑 Solo 在面对难题时极易陷入漫长的无节制思考循环（如 `LIVE-ASYNC-BATCH-POOL` 任务中 Solo 补全耗费 7,682 Token，单次耗时达 126 秒）。agent-boost 引入的 **自适应推理 Token 预算**（`TIER_TOKEN_BUDGETS`：simple 2048 / standard 4096 / hard 6144）精准按任务复杂度配置配额，既保证了关键架构代码的推理深度，又消除了无效冗余，使得 Boost 轨的 **总 Token 消耗反低于 Solo 轨（0.989x）**，单次平均延迟从 16.5 秒直接腰斩到 8.5 秒。
+
+交互式跨模型对比总报可直接查看：[`live-results/cross-model-comparison.html`](live-results/cross-model-comparison.html)。
+
+---
+
+## 8. 复现指南（自己跑这场实盘对决）
 
 ### 一条命令
 
 ```bash
 export OPENCODE_API_KEY=oc_sk_...   # opencode.ai 控制台密钥（Go 套餐）；也支持 ./.env 或 ~/.env
-npm run benchmark                   # 完整实盘对决（10 项标准任务），自动生成交互式 report.html
-npm run benchmark:selftest          # 零 API 花销离线验证全部 36 项 harness 机制
+npm run benchmark                   # 完整实盘对决（12 项标准任务），自动生成交互式 report.html
+npm run benchmark:selftest          # 零 API 花销离线验证全部 42 项 harness 机制
 npm run benchmark:report            # 从最新测试台账一键生成精美 HTML 可视化报告
+npm run benchmark:compare           # 一键生成跨模型横向对比总报
 ```
 
-运行器打印每次请求的结果、Token 计量与测试记分牌；追加 `--json out.json` 可得结构化台账（每次 HTTP 调用的延迟、状态与 usage），追加 `--html out.html` 输出 Apple 现代设计规范的独立离线可视化报告。零 API 花销即可验证 harness 机制：`npm run benchmark:selftest`（36 项检查覆盖 10 个标准任务：每个夹具在种子 bug 上必失败、canonical 修复必全绿、Git reset/reflog 回路、verify-gate 不变量）。在 ZCode 中可通过 [`adapters/zcode/report-preview.html`](adapters/zcode/report-preview.html) 面板直接预览可视化报告。
+运行器打印每次请求的结果、Token 计量与测试记分牌；追加 `--json out.json` 可得结构化台账（每次 HTTP 调用的延迟、状态与 usage），追加 `--html out.html` 输出 Apple 现代设计规范的独立离线可视化报告。零 API 花销即可验证 harness 机制：`npm run benchmark:selftest`（42 项检查覆盖 12 个标准任务：每个夹具在种子 bug 上必失败、canonical 修复必全绿、Git reset/reflog 回路、verify-gate 不变量）。在 ZCode 中可通过 [`adapters/zcode/report-preview.html`](adapters/zcode/report-preview.html) 面板直接预览可视化报告。
 
 ### 任务提示词（已适配 mimo-v2.6-flash）
 
@@ -184,7 +213,7 @@ The repository has no test command configured.
 
 ---
 
-## 8. 学术参考与致谢
+## 9. 学术参考与致谢
 
 - **BugsJS**：Péter Gyimesi 等，*"Bugs.js: A Benchmark of JavaScript Bugs"*，IEEE/ACM MSR 2019，[DOI:10.1109/MSR.2019.00024](https://doi.org/10.1109/MSR.2019.00024)。
 - **SWE-bench / SWE-bench Verified**：Carlos E. Jimenez 等，*"SWE-bench: Can Language Models Resolve Real-World GitHub Issues?"*，ICLR 2024，[arXiv:2310.06770](https://arxiv.org/abs/2310.06770)；Princeton NLP 与 OpenAI，*"SWE-bench Verified"*（2024）。

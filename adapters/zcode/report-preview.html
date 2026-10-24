@@ -56,6 +56,13 @@
       <span>🚀 agent-boost Benchmark Results Dashboard</span>
     </div>
     <div>
+      <select id="report-select" class="btn" style="background:#333;margin-right:8px;padding:4px 8px;" onchange="document.getElementById('report-frame').src=this.value">
+        <option value="../../live-results/report.html">Default Report (Latest Run)</option>
+        <option value="../../live-results/cross-model-comparison.html">Cross-Model Comparison (mimo vs deepseek)</option>
+        <option value="../../live-results/report-deepseek-12tasks.html">DeepSeek 12-Task Report</option>
+        <option value="../../live-results/report-opt-tiers.html">Option B Adaptive Tiers Report</option>
+        <option value="../../live-results/report-hard-cascade.html">Option A Cascade Tasks Report</option>
+      </select>
       <button class="btn" onclick="document.getElementById('report-frame').contentWindow.location.reload()">Refresh Report</button>
     </div>
   </div>

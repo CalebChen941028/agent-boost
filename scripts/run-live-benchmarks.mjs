@@ -167,6 +167,11 @@ function sanitizeChildEnv() {
   const env = { ...process.env };
   delete env.OPENCODE_API_KEY;
   delete env.ZEN_API_KEY;
+  for (const k of Object.keys(env)) {
+    if (k.startsWith("NODE_TEST_")) {
+      delete env[k];
+    }
+  }
   return env;
 }
 
@@ -1988,15 +1993,20 @@ const CANONICAL_SEMVER_HYPHEN_PATCH =
   "    return compareVersions(v, lo) >= 0 && compareVersions(v, hi) <= 0;\n" +
   "  }\n";
 
-async function offlineSelftest() {
+export async function offlineSelftest(opts = {}) {
+  const silent = Boolean(opts && opts.silent);
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "agent-boost-selftest-"));
   const checks = [];
   const check = (name, cond, detail = "") => {
     checks.push({ name, ok: Boolean(cond), detail });
-    console.log(`  ${cond ? "✔" : "✖"} ${name}${detail ? ` — ${detail}` : ""}`);
+    if (!silent) {
+      console.log(`  ${cond ? "✔" : "✖"} ${name}${detail ? ` — ${detail}` : ""}`);
+    }
   };
 
-  console.log("agent-boost live harness — OFFLINE SELF-TEST (no API calls)\n");
+  if (!silent) {
+    console.log("agent-boost live harness — OFFLINE SELF-TEST (no API calls)\n");
+  }
 
   for (const task of LIVE_TASKS) {
     const buggyWs = path.join(root, `${task.id}-buggy`);
@@ -2103,10 +2113,13 @@ async function offlineSelftest() {
 
   fs.rmSync(root, { recursive: true, force: true });
   const failed = checks.filter((c) => !c.ok);
-  console.log(
-    `\nself-test: ${checks.length - failed.length}/${checks.length} checks passed${failed.length ? " — FAILED" : ""}`,
-  );
+  if (!silent) {
+    console.log(
+      `\nself-test: ${checks.length - failed.length}/${checks.length} checks passed${failed.length ? " — FAILED" : ""}`,
+    );
+  }
   process.exitCode = failed.length ? 1 : 0;
+  return { ok: failed.length === 0, passed: checks.length - failed.length, total: checks.length, failed: failed.length, checks };
 }
 
 function countTargetTests(task) {

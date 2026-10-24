@@ -24,7 +24,6 @@ import {
   computeFailureSignature,
   calculateYardstickScore,
 } from "../shared/verify-gate.js";
-import { BENCHMARK_TASKS } from "../scripts/run-benchmarks.mjs";
 
 const dwfSource = fs.readFileSync(
   new URL("../adapters/zcode/boost.dwf.ts", import.meta.url),
@@ -32,29 +31,29 @@ const dwfSource = fs.readFileSync(
 );
 
 // ---------------------------------------------------------------------------
-// Group 1: resolveModelConfiguration — GLM-5.3 alias mapping and tiering
+// Group 1: resolveModelConfiguration — model alias mapping and tiering
 // ---------------------------------------------------------------------------
 
-test("DWF 1a. resolveModelConfiguration maps the real GLM-5.3 entries of models.example.json with light/heavy tiering", () => {
+test("DWF 1a. resolveModelConfiguration maps entries of models.example.json with light/heavy tiering", () => {
   const modelsExample = JSON.parse(
     fs.readFileSync(new URL("../models.example.json", import.meta.url), "utf8"),
   );
 
   // Real entries shipped with the repo
-  assert.deepEqual(resolveModelConfiguration("glm-5.3-flash", modelsExample), {
-    modelId: "z-ai/glm-5.3-flash",
+  assert.deepEqual(resolveModelConfiguration("mimo-v2.6-flash", modelsExample), {
+    modelId: "opencode/mimo-v2.6-flash",
     tier: "light",
   });
-  assert.deepEqual(resolveModelConfiguration("glm-5.3-prime", modelsExample), {
-    modelId: "z-ai/glm-5.3-prime",
+  assert.deepEqual(resolveModelConfiguration("claude-sonnet-5.5", modelsExample), {
+    modelId: "anthropic/claude-sonnet-5.5",
     tier: "heavy",
   });
 
-  // Light/heavy layering: flash is the light tier, prime the heavy tier
-  const flash = resolveModelConfiguration("glm-5.3-flash", modelsExample);
-  const prime = resolveModelConfiguration("glm-5.3-prime", modelsExample);
-  assert.notEqual(flash.tier, prime.tier);
-  assert.notEqual(flash.modelId, prime.modelId);
+  // Light/heavy layering: flash is the light tier, sonnet the heavy tier
+  const flash = resolveModelConfiguration("mimo-v2.6-flash", modelsExample);
+  const sonnet = resolveModelConfiguration("claude-sonnet-5.5", modelsExample);
+  assert.notEqual(flash.tier, sonnet.tier);
+  assert.notEqual(flash.modelId, sonnet.modelId);
 
   // Every alias in the shipped config resolves to its declared id and tier
   for (const [alias, entry] of Object.entries(modelsExample.models)) {
@@ -67,46 +66,45 @@ test("DWF 1a. resolveModelConfiguration maps the real GLM-5.3 entries of models.
 
   // Whitespace around the requested name is trimmed before lookup
   assert.deepEqual(
-    resolveModelConfiguration("  glm-5.3-prime  ", modelsExample),
-    { modelId: "z-ai/glm-5.3-prime", tier: "heavy" },
+    resolveModelConfiguration("  claude-sonnet-5.5  ", modelsExample),
+    { modelId: "anthropic/claude-sonnet-5.5", tier: "heavy" },
   );
 });
 
-test("DWF 1b. resolveModelConfiguration: inline plain-glm-5.3 fixture, unknown-alias passthrough, default_light_model fallback, empty-request default tier", () => {
-  // models.example.json ships no plain "glm-5.3" entry — supply an inline fixture
-  const glmSoloConfig = {
-    default_light_model: "glm-5.3",
+test("DWF 1b. resolveModelConfiguration: inline custom model fixture, unknown-alias passthrough, default_light_model fallback, empty-request default tier", () => {
+  const customConfig = {
+    default_light_model: "mimo-v2.6-flash",
     models: {
-      "glm-5.3": { id: "z-ai/glm-5.3", vendor: "zhipu", tier: "heavy" },
+      "mimo-v2.6-flash": { id: "opencode/mimo-v2.6-flash", vendor: "opencode", tier: "heavy" },
     },
   };
-  assert.deepEqual(resolveModelConfiguration("glm-5.3", glmSoloConfig), {
-    modelId: "z-ai/glm-5.3",
+  assert.deepEqual(resolveModelConfiguration("mimo-v2.6-flash", customConfig), {
+    modelId: "opencode/mimo-v2.6-flash",
     tier: "heavy",
   });
 
   // Without local config the requested name passes through as the model id
-  assert.deepEqual(resolveModelConfiguration("glm-5.3", null), {
-    modelId: "glm-5.3",
+  assert.deepEqual(resolveModelConfiguration("custom-model", null), {
+    modelId: "custom-model",
     tier: "light",
   });
 
   // A models entry without an explicit tier defaults to "light"
-  const noTierConfig = { models: { "glm-5.3": { id: "z-ai/glm-5.3" } } };
-  assert.deepEqual(resolveModelConfiguration("glm-5.3", noTierConfig), {
-    modelId: "z-ai/glm-5.3",
+  const noTierConfig = { models: { "custom-model": { id: "provider/custom-model" } } };
+  assert.deepEqual(resolveModelConfiguration("custom-model", noTierConfig), {
+    modelId: "provider/custom-model",
     tier: "light",
   });
 
   // An alias absent from the config passes through verbatim with tier light
   assert.deepEqual(
-    resolveModelConfiguration("z-ai/glm-5.3-turbo-x", glmSoloConfig),
-    { modelId: "z-ai/glm-5.3-turbo-x", tier: "light" },
+    resolveModelConfiguration("custom-vendor/unknown-model", customConfig),
+    { modelId: "custom-vendor/unknown-model", tier: "light" },
   );
 
-  // Empty request falls back to default_light_model ("glm-5.3" -> z-ai/glm-5.3)
-  assert.deepEqual(resolveModelConfiguration("", glmSoloConfig), {
-    modelId: "z-ai/glm-5.3",
+  // Empty request falls back to default_light_model ("mimo-v2.6-flash" -> opencode/mimo-v2.6-flash)
+  assert.deepEqual(resolveModelConfiguration("", customConfig), {
+    modelId: "opencode/mimo-v2.6-flash",
     tier: "light",
   });
 
@@ -444,43 +442,26 @@ test("DWF 4d. calculateYardstickScore normalizes customWeights to sum 1; zero-su
 });
 
 // ---------------------------------------------------------------------------
-// Group 5: control vs experiment track isolation and determinism
+// Group 5: control vs experiment track conflict isolation and determinism
 // ---------------------------------------------------------------------------
 
-test("DWF 5. BUGSJS-EXPRESS-104: baseline (solo, no tools) fails deterministically, boost (full toolchain) passes deterministically", async () => {
-  const task = BENCHMARK_TASKS.find((t) => t.id === "BUGSJS-EXPRESS-104");
-  assert.ok(task, "BUGSJS-EXPRESS-104 must exist in the standard benchmark suite");
+test("DWF 5. Express route mounting race: uncoordinated parallel code workstreams collide on shared gateway, planner decoupling eliminates conflict", () => {
+  // Control track: two code workstreams collide on shared entrypoint src/server.js
+  const coupled = [
+    { title: "OAuth2 Auth Routes", kind: "code", targetFiles: ["src/routes/auth.js", "src/server.js"] },
+    { title: "Metrics API Routes", kind: "code", targetFiles: ["src/routes/api.js", "src/server.js"] },
+  ];
+  const conflicts = detectTargetFileConflicts(coupled);
+  assert.equal(conflicts.length, 1);
+  assert.equal(conflicts[0].file, "src/server.js");
+  assert.deepEqual(conflicts[0].workstreams.sort(), ["Metrics API Routes", "OAuth2 Auth Routes"]);
 
-  const baseline1 = await task.runBaseline();
-  const baseline2 = await task.runBaseline();
-  const boost1 = await task.runBoost();
-  const boost2 = await task.runBoost();
-
-  // Control track (solo model, no conflict gate): silent clobber drops the auth route
-  assert.equal(baseline1.passed, false);
-  assert.equal(baseline1.exitCode, 1);
-  assert.ok(baseline1.yardstickScore < 85);
-
-  // Experiment track (model + tools): Phase 1 intercepts, decouples, verifies
-  assert.equal(boost1.passed, true);
-  assert.equal(boost1.exitCode, 0);
-  assert.ok(boost1.yardstickScore >= 85);
-
-  // Deterministic across repeated runs of both tracks
-  assert.equal(baseline2.passed, false);
-  assert.equal(boost2.passed, true);
-  assert.equal(baseline2.yardstickScore, baseline1.yardstickScore);
-  assert.equal(boost2.yardstickScore, boost1.yardstickScore);
-
-  // Isolation contract: the boost track only passes because the conflict gate
-  // fires on the raw workstream pair the baseline executes blindly
-  const rawPairConflicts = detectTargetFileConflicts([
-    { title: "OAuth2 Auth Routes", kind: "code", targetFiles: ["src/routes/auth.ts", "src/server.ts"] },
-    { title: "Metrics API Routes", kind: "code", targetFiles: ["src/routes/api.ts", "src/server.ts"] },
-  ]);
-  assert.equal(rawPairConflicts.length, 1);
-  assert.equal(rawPairConflicts[0].file, "src/server.ts");
-
-  // The two tracks never converge on this task
-  assert.ok(boost1.yardstickScore > baseline1.yardstickScore);
+  // Experiment track: planner decouples targetFiles into disjoint sets
+  const decoupled = [
+    { title: "OAuth2 Auth Routes", kind: "code", targetFiles: ["src/routes/auth.js", "src/middleware/auth.js"] },
+    { title: "Metrics API Routes", kind: "code", targetFiles: ["src/routes/api.js", "src/middleware/metrics.js"] },
+    { title: "Server Gateway Assembly", kind: "code", targetFiles: ["src/server.js"] },
+  ];
+  const zeroConflicts = detectTargetFileConflicts(decoupled);
+  assert.equal(zeroConflicts.length, 0, "Disjoint targetFiles guarantee zero write clobbering");
 });

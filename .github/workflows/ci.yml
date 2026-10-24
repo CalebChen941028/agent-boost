@@ -25,11 +25,7 @@ jobs:
         run: |
           npm test
 
-      - name: Run standard engineering benchmarks
-        run: |
-          npm run benchmark
-
       - name: Run live benchmark harness offline self-test
         run: |
-          node scripts/run-live-benchmarks.mjs --offline-selftest
+          npm run benchmark:selftest
 

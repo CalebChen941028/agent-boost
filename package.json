@@ -8,8 +8,9 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node scripts/build.mjs && node --test tests/*.test.mjs",
-    "benchmark": "node scripts/run-benchmarks.mjs",
-    "benchmark:live": "node scripts/run-live-benchmarks.mjs"
+    "benchmark": "node scripts/run-live-benchmarks.mjs",
+    "benchmark:live": "node scripts/run-live-benchmarks.mjs",
+    "benchmark:selftest": "node scripts/run-live-benchmarks.mjs --offline-selftest"
   },
   "keywords": [
     "multi-agent",

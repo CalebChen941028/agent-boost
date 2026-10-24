@@ -11,7 +11,7 @@ This report answers one question with metered live traffic: with the same model 
 - **Solo mimo-v2.6-flash (control)**: one model, bare prompts, no tools. No file-conflict gate, no Git rollback, no reproduction-test synthesis, no lifelong memory, no independent judge.
 - **mimo-v2.6-flash + agent-boost (treatment)**: the same brain driving the v0.4.0 five-phase state machine — `evaluateTaskComplexity` compute tiers, `matchExperienceCues` recall, `detectTargetFileConflicts` ownership gating, per-workstream execution, LATS Git checkpoints with real `git reset --hard` rollback, `verify_synth.sh` test synthesis, and `calculateYardstickScore` six-criterion judging.
 
-The harness is [`scripts/run-live-benchmarks.mjs`](scripts/run-live-benchmarks.mjs). Run `npm run benchmark:live` and the same machinery places real HTTP calls from your own account. The deterministic 12-task mechanism suite ([`scripts/run-benchmarks.mjs`](scripts/run-benchmarks.mjs), `npm run benchmark`) remains in the repository and is described in Section 7.
+The harness is [`scripts/run-live-benchmarks.mjs`](scripts/run-live-benchmarks.mjs). Run `npm run benchmark` (or `npm run benchmark:live`) and the same machinery places real HTTP calls from your own account. Offline, run `npm run benchmark:selftest` to verify all 21 harness mechanisms with zero API spend.
 
 ### Run facts
 
@@ -127,22 +127,17 @@ The calibration runs also exercised the rollback path for real (`git reset --har
 
 ---
 
-## 7. The Deterministic 12-Task Suite (Retained)
-
-[`scripts/run-benchmarks.mjs`](scripts/run-benchmarks.mjs) still runs the 12-task deterministic mechanism suite (`npm run benchmark`, milliseconds, zero network): both arms execute real JavaScript through the shipped pure functions, verifying toolchain guarantees — conflict interception, signature-shift rollback semantics, synthesis gating, yardstick mechanics — byte-identically across runs. Its 0/12-vs-12/12 margin verifies **mechanism guarantees by construction**, not live-model performance; the live numbers in Sections 2–4 are the live-model statement. The 44 unit tests (`npm test`) cover both harnesses' foundations.
-
----
-
-## 8. Reproduction Guide (Run the Live Duel Yourself)
+## 7. Reproduction Guide (Run the Live Duel Yourself)
 
 ### One command
 
 ```bash
 export OPENCODE_API_KEY=oc_sk_...   # opencode.ai console key (Go plan); also read from ./.env or ~/.env
-npm run benchmark:live              # full 5-task duel, ~10–15 min, ≈ $0.005 at mimo list price
+npm run benchmark                   # full 5-task duel, ~10–15 min, ≈ $0.005 at mimo list price
+npm run benchmark:selftest          # zero API spend offline verification of all 21 harness mechanisms
 ```
 
-The runner prints every request's outcome, token metering, and test scoreboard; append `--json out.json` for the structured ledger (every HTTP call with latency, status, and usage). Harness machinery can be verified with zero API spend: `node scripts/run-live-benchmarks.mjs --offline-selftest` (21 checks: every fixture fails on its seeded bug, canonical fixes go green, Git reset/reflog round-trip, verify-gate invariants).
+The runner prints every request's outcome, token metering, and test scoreboard; append `--json out.json` for the structured ledger (every HTTP call with latency, status, and usage). Harness machinery can be verified with zero API spend: `npm run benchmark:selftest` (21 checks: every fixture fails on its seeded bug, canonical fixes go green, Git reset/reflog round-trip, verify-gate invariants).
 
 ### The task prompts, adapted for mimo-v2.6-flash
 
@@ -183,7 +178,7 @@ Expect the structural pattern of Section 4, not the exact numbers — model beha
 
 ---
 
-## 9. Academic References & Acknowledgments
+## 8. Academic References & Acknowledgments
 
 - **BugsJS**: Péter Gyimesi et al., *"Bugs.js: A Benchmark of JavaScript Bugs"*, IEEE/ACM MSR 2019, [DOI:10.1109/MSR.2019.00024](https://doi.org/10.1109/MSR.2019.00024).
 - **SWE-bench / SWE-bench Verified**: Carlos E. Jimenez et al., *"SWE-bench: Can Language Models Resolve Real-World GitHub Issues?"*, ICLR 2024, [arXiv:2310.06770](https://arxiv.org/abs/2310.06770); Princeton NLP & OpenAI, *"SWE-bench Verified"* (2024).

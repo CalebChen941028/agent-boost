@@ -157,9 +157,9 @@ test("validateTeamProfile rejects invalid profile (B7 fix)", () => {
 
 test("resolveModelConfiguration maps aliases and defaults from config (B11 fix)", () => {
   const config = {
-    default_light_model: "glm-flash",
+    default_light_model: "mimo-flash",
     models: {
-      "glm-flash": { id: "z-ai/glm-5.3-flash", tier: "light" },
+      "mimo-flash": { id: "opencode/mimo-v2.6-flash", tier: "light" },
       "qwen-flash": { id: "qwen/qwen3.8-flash", tier: "light" },
     },
   };
@@ -169,7 +169,7 @@ test("resolveModelConfiguration maps aliases and defaults from config (B11 fix)"
   assert.equal(resolvedAlias.tier, "light");
 
   const resolvedDefault = resolveModelConfiguration("", config);
-  assert.equal(resolvedDefault.modelId, "z-ai/glm-5.3-flash");
+  assert.equal(resolvedDefault.modelId, "opencode/mimo-v2.6-flash");
   assert.equal(resolvedDefault.tier, "light");
 });
 

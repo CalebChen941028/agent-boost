@@ -11,7 +11,7 @@
 - **Solo mimo-v2.6-flash（对照组）**：单一模型，裸提示词，零工具。没有文件冲突门禁、没有 Git 回滚、没有复现测试合成、没有终身记忆、没有独立裁判。
 - **mimo-v2.6-flash + agent-boost（实验组）**：同一个大脑，驱动 v0.4.0 五阶段状态机——`evaluateTaskComplexity` 算力分层、`matchExperienceCues` 经验召回、`detectTargetFileConflicts` 文件所有权门禁、按工作流执行、LATS Git 检查点与真实 `git reset --hard` 回滚、`verify_synth.sh` 测试合成、`calculateYardstickScore` 六维量化裁判。
 
-测试载体是 [`scripts/run-live-benchmarks.mjs`](scripts/run-live-benchmarks.mjs)。运行 `npm run benchmark:live`，同一套机制就会用你自己的账号发起真实 HTTP 调用。12 项确定性机制验证套件（[`scripts/run-benchmarks.mjs`](scripts/run-benchmarks.mjs)，`npm run benchmark`）仍保留在仓库中，见第 7 节。
+测试载体是 [`scripts/run-live-benchmarks.mjs`](scripts/run-live-benchmarks.mjs)。运行 `npm run benchmark`（或 `npm run benchmark:live`），同一套机制就会用你自己的账号发起真实 HTTP 调用。离线环境下可运行 `npm run benchmark:selftest` 验证全部 21 项 Harness 机制。
 
 ### 本次运行事实
 
@@ -127,22 +127,17 @@ v3→v4 客户载荷转换器；仓库声明无验证命令（`verifyCommand: nu
 
 ---
 
-## 7. 12 项确定性套件（保留）
-
-[`scripts/run-benchmarks.mjs`](scripts/run-benchmarks.mjs) 仍运行 12 项确定性机制套件（`npm run benchmark`，毫秒级，零网络）：双轨通过仓库内置纯函数执行真实 JavaScript，验证工具链保证——冲突拦截、签名漂移回滚语义、合成门禁、六维裁判机制——跨运行字节级一致。其 0/12 对 12/12 的差距验证的是**构造性的机制保证**，不是实盘模型表现；第 2–4 节的实盘数字才是模型层面的陈述。44 项单元测试（`npm test`）覆盖两个 harness 的共同地基。
-
----
-
-## 8. 复现指南（自己跑这场实盘对决）
+## 7. 复现指南（自己跑这场实盘对决）
 
 ### 一条命令
 
 ```bash
 export OPENCODE_API_KEY=oc_sk_...   # opencode.ai 控制台密钥（Go 套餐）；也支持 ./.env 或 ~/.env
-npm run benchmark:live              # 完整五任务对决，约 10–15 分钟，mimo 牌价约 $0.005
+npm run benchmark                   # 完整五任务对决，约 10–15 分钟，mimo 牌价约 $0.005
+npm run benchmark:selftest          # 零 API 花销离线验证全部 21 项 harness 机制
 ```
 
-运行器打印每次请求的结果、Token 计量与测试记分牌；追加 `--json out.json` 可得结构化台账（每次 HTTP 调用的延迟、状态与 usage）。零 API 花销即可验证 harness 机制：`node scripts/run-live-benchmarks.mjs --offline-selftest`（21 项检查：每个夹具在种子 bug 上必失败、canonical 修复必全绿、Git reset/reflog 回路、verify-gate 不变量）。
+运行器打印每次请求的结果、Token 计量与测试记分牌；追加 `--json out.json` 可得结构化台账（每次 HTTP 调用的延迟、状态与 usage）。零 API 花销即可验证 harness 机制：`npm run benchmark:selftest`（21 项检查：每个夹具在种子 bug 上必失败、canonical 修复必全绿、Git reset/reflog 回路、verify-gate 不变量）。
 
 ### 任务提示词（已适配 mimo-v2.6-flash）
 
@@ -183,7 +178,7 @@ The repository has no test command configured.
 
 ---
 
-## 9. 学术参考与致谢
+## 8. 学术参考与致谢
 
 - **BugsJS**：Péter Gyimesi 等，*"Bugs.js: A Benchmark of JavaScript Bugs"*，IEEE/ACM MSR 2019，[DOI:10.1109/MSR.2019.00024](https://doi.org/10.1109/MSR.2019.00024)。
 - **SWE-bench / SWE-bench Verified**：Carlos E. Jimenez 等，*"SWE-bench: Can Language Models Resolve Real-World GitHub Issues?"*，ICLR 2024，[arXiv:2310.06770](https://arxiv.org/abs/2310.06770)；Princeton NLP 与 OpenAI，*"SWE-bench Verified"*（2024）。

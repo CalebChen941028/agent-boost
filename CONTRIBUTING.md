@@ -15,7 +15,7 @@ Thank you for contributing to `agent-boost`!
 4. **Verification Commands**:
    ```bash
    npm test
-   npm run benchmark
+   npm run benchmark:selftest
    ```
 
 ---
@@ -31,5 +31,5 @@ Thank you for contributing to `agent-boost`!
 4. **本地验证命令**：
    ```bash
    npm test
-   npm run benchmark
+   npm run benchmark:selftest
    ```

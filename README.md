@@ -94,9 +94,7 @@ Five executable engineering tasks drawn from **BugsJS (ICSE/MSR)**, **SWE-bench 
 
 > 📊 **Full Live Report**: per-task scoreboard with metered tokens and latencies, task narratives over the wire, the harness integrity protocol, and the honest strong-solo analysis — [**`BENCHMARKS.md`**](BENCHMARKS.md) (中文版：[**`BENCHMARKS.zh-CN.md`**](BENCHMARKS.zh-CN.md)).
 >
-> 🧪 **Reproduce**: `npm run benchmark:live` runs the same live duel from your own account (`OPENCODE_API_KEY`); `node scripts/run-live-benchmarks.mjs --offline-selftest` verifies all harness machinery with zero API spend.
->
-> ⚙️ **Deterministic Suite**: the 12-task zero-network mechanism suite (`npm run benchmark`, millisecond-fast) still verifies toolchain guarantees byte-identically across runs — see Section 7 of the report.
+> 🧪 **Reproduce Locally**: `npm run benchmark` (or `npm run benchmark:live`) runs the live duel from your own account (`OPENCODE_API_KEY`); `npm run benchmark:selftest` verifies all 21 harness mechanisms with zero API spend.
 
 ---
 

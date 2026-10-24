@@ -2125,18 +2125,32 @@ function countTargetTests(task) {
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const out = { json: null, tasks: null, selftest: false };
+  const out = { json: null, tasks: null, selftest: false, help: false };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--json") out.json = argv[++i];
     else if (argv[i] === "--offline-selftest") out.selftest = true;
     else if (argv[i] === "--tasks") out.tasks = String(argv[++i] || "").split(",").map((s) => s.trim()).filter(Boolean);
+    else if (argv[i] === "--help" || argv[i] === "-h") out.help = true;
   }
   return out;
 }
 
 if (process.argv[1] && process.argv[1].endsWith("run-live-benchmarks.mjs")) {
   const args = parseArgs(process.argv.slice(2));
-  if (args.selftest) {
+  if (args.help) {
+    console.log(`
+Usage:
+  node scripts/run-live-benchmarks.mjs [options]
+  npm run benchmark:live
+
+Options:
+  --help, -h            Show this help message
+  --offline-selftest    Run 21 offline harness validation checks (no API calls)
+  --tasks <id1,id2>     Run specific tasks by ID (comma-separated)
+  --json <path>         Write results summary JSON to file
+`);
+    process.exit(0);
+  } else if (args.selftest) {
     offlineSelftest();
   } else {
     runLiveBenchmarks({ tasks: args.tasks })

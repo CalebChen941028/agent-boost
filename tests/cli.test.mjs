@@ -40,6 +40,22 @@ test("CLI: install --dry-run succeeds for claude target", () => {
   assert.match(res.stdout, /\[Dry-Run\] Target: claude/);
 });
 
+test("CLI: install --dry-run succeeds for antigravity and agents targets", () => {
+  const resA = spawnSync(process.execPath, [CLI_PATH, "install", "--target", "antigravity", "--dry-run"], { encoding: "utf8" });
+  assert.equal(resA.status, 0);
+  assert.match(resA.stdout, /\[Dry-Run\] Target: antigravity/);
+
+  const resB = spawnSync(process.execPath, [CLI_PATH, "install", "--target", "agents", "--dry-run"], { encoding: "utf8" });
+  assert.equal(resB.status, 0);
+  assert.match(resB.stdout, /\[Dry-Run\] Target: agents/);
+});
+
+test("CLI: install --dry-run succeeds for batch all target", () => {
+  const res = spawnSync(process.execPath, [CLI_PATH, "install", "--target", "all", "--dry-run"], { encoding: "utf8" });
+  assert.equal(res.status, 0);
+  assert.match(res.stdout, /Multi-Agent Batch Installation/);
+});
+
 test("CLI: rejects unknown command with exit 1", () => {
   const res = spawnSync(process.execPath, [CLI_PATH, "invalid-cmd"], { encoding: "utf8" });
   assert.equal(res.status, 1);

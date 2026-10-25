@@ -42,8 +42,9 @@ Usage:
 Commands:
   install       Install agent-boost into target AI coding agents
                 Options:
-                  --target <name>  zcode | claude | codex | opencode | deepseek |
-                                   workbuddy | cursor | windsurf | cline | aider | generic
+                  --target <name>  all | zcode | claude | codex | antigravity | agents |
+                                   deepseek | opencode | workbuddy | cursor | windsurf |
+                                   cline | aider | generic
                   --lang <opt>     auto | zh | en (default: auto)
                   --dest <path>    Custom destination directory
                   --dry-run        Simulate installation without writing files

@@ -160,7 +160,35 @@ v3→v4 客户载荷转换器；仓库声明无验证命令（`verifyCommand: nu
 
 ---
 
-## 8. 复现指南（自己跑这场实盘对决）
+## 8. 高阶前沿大考扩展（Tasks 13–18）
+
+为消除传统基准的天花板效应，并系统性度量多 Agent 并发写入协同与架构级不变式能力，实盘测试套件从 12 项扩展到 18 项工程大考：
+
+| 分组 | 任务 ID | 场景与原型考点 | Solo vs Boost 实盘对决实测表现 |
+| :--- | :--- | :--- | :--- |
+| **天花板突破 (T13–T15)** | `LIVE-BLIND-FAULT-LOCALIZATION` | 4 候选模块微服务调用链全盲故障定位 | 双过（100 对 100），Boost 完整走完 hard 档门禁 |
+| | `LIVE-HARNESS-INV-DUAL-PACKAGE` | 双 ESM/CJS subpath package exports 打包破损 | 双过（100 对 100），精准定位包导出而非业务代码 |
+| | `LIVE-LONG-HORIZON-RESOURCE-LEAK` | 防抖定时器与监听器在 50 连接浸泡压测下的长程资源泄漏 | 双过（100 对 100），幂等 destroy 与泄漏断言全绿 |
+| **高强度基准 (T16–T18)** | `LIVE-SWE-BENCH-PRO-NODEBB` | 移植自真实 **SWE-bench Pro V2** NodeBB 多维正序与交集检索 | 双过（4/4 测试，100 对 100），4 处排序不变式守住 |
+| | `LIVE-RED-HERRING-CIRCULAR-DECOY` | 下游序列化器报错障眼法 vs 上游环形上下文泄漏 | 双过（3/3 测试，100 对 100），下游严苛 DTO 契约全绿 |
+| | `LIVE-DISTRIBUTED-CONTRACT-RACE` | 分布式双 Agent 网关与结算协议并发升级大考 | **Boost 一发全通（5,563 Token，19.5s）** vs **Solo 写覆盖踩踏重试（15,836 Token，41.8s）** |
+
+### Task 18（分布式并发竞态大考）的深度工程启示
+
+在 Task 18 中，两个并发子代理在升级分布式结算平台的同时，需要共同修改共享契约文件（`src/contracts/protocol.js`）：
+
+1. **Solo 的并发覆写踩踏**：
+   在第 1 轮中，网关团队与结算团队未经协调并行修改共享契约。结算团队后写落盘，直接覆写并抹掉了网关团队导出的 `GATEWAY_ACTIONS`，导致 Node.js 测试加载器在 import 阶段直接崩溃（`[solo race r1] exit=1 pass=0 fail=1`）。Solo 不得不依赖第 2 轮失败反馈进行昂贵的补救重试，总计消耗 **15,836 Token 与 41.8 秒**。
+
+2. **Boost 规划期解耦的降维打击**：
+   agent-boost 的 Phase 1 规划器在执行前就将任务拆解为三个单文件独立工作流（`protocol.js`、`gateway.js`、`billing.js`），文件重叠数直接归零。在单次流水线中即实现原子同步交付：
+   - **一次拿满 3/3 测试**：0 冲突、0 修复轮、首通 100 分；
+   - **Token 消耗锐减 64.9%**：仅耗费 **5,563 Token（仅为 Solo 的 0.351 倍）**；
+   - **耗时快 2.1 倍**：全程耗时 **19.5s**（Solo 耗时 41.8s）。
+
+---
+
+## 9. 复现指南（自己跑这场实盘对决）
 
 ### 一条命令
 

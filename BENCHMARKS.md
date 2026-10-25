@@ -160,7 +160,35 @@ Interactive cross-model dashboard: [`live-results/cross-model-comparison.html`](
 
 ---
 
-## 8. Reproduction Guide (Run the Live Duel Yourself)
+## 8. High-Intensity Frontier Expansion (Tasks 13–18)
+
+To eliminate benchmark ceiling effects and systematically evaluate multi-agent synchronization and architectural invariants, the live test suite expanded from 12 to 18 canonical engineering tasks:
+
+| Group | Task ID | Focus & Archetype | Solo vs Boost Empirical Outcome |
+| :--- | :--- | :--- | :--- |
+| **Ceiling Break (T13–T15)** | `LIVE-BLIND-FAULT-LOCALIZATION` | Blind fault localization across 4 microservice files | Dual Pass (100 vs 100), Boost walked full hard-tier gate |
+| | `LIVE-HARNESS-INV-DUAL-PACKAGE` | Dual ESM/CJS subpath package export resolution | Dual Pass (100 vs 100), subpath packaging resolved |
+| | `LIVE-LONG-HORIZON-RESOURCE-LEAK` | Debounce timer & listener leak under 50-connection soak | Dual Pass (100 vs 100), idempotent cleanup verified |
+| **High-Intensity (T16–T18)** | `LIVE-SWE-BENCH-PRO-NODEBB` | Real-world **SWE-bench Pro V2** NodeBB multi-dimensional sorting | Dual Pass (4/4 tests, 100 vs 100), all 4 sort invariants held |
+| | `LIVE-RED-HERRING-CIRCULAR-DECOY` | Decoy serializer stack trace vs upstream circular context leak | Dual Pass (3/3 tests, 100 vs 100), strict DTO hygiene kept |
+| | `LIVE-DISTRIBUTED-CONTRACT-RACE` | Concurrent dual-agent gateway & billing protocol v2 race | **Boost 1-Shot Pass (5,563 tokens, 19.5s)** vs **Solo Collision & Retry (15,836 tokens, 41.8s)** |
+
+### Deep Takeaways from Task 18 (`LIVE-DISTRIBUTED-CONTRACT-RACE`)
+
+In Task 18, two parallel subagents upgraded a distributed billing platform while concurrently modifying a shared protocol contract file (`src/contracts/protocol.js`):
+
+1. **Solo's Concurrent Write Clobbering**:
+   In Round 1, Gateway and Billing subagents executed concurrently without coordination. Whichever subagent settled last clobbered the shared contract file, erasing `GATEWAY_ACTIONS` and causing the Node.js test loader to crash on import (`[solo race r1] exit=1 pass=0 fail=1`). Solo required an expensive second retry with test failure feedback to recover, consuming **15,836 tokens and 41.8 seconds**.
+
+2. **Boost's Planning-Time Disjoint Decoupling**:
+   Agent-boost's Phase 1 planner decomposed the task into three single-ownership workstreams (`protocol.js`, `gateway.js`, `billing.js`). With 0 file conflicts at execution time, both service endpoints and the shared protocol contract were delivered cleanly in a single pass:
+   - **1-Shot First-Pass Delivery**: 3/3 tests green, 0 repair rounds, 0 conflicts.
+   - **64.9% Token Reduction**: Consumed only **5,563 tokens (0.351x of Solo)**.
+   - **Over 2x Faster**: Finished in **19.5s** vs Solo's 41.8s.
+
+---
+
+## 9. Reproduction Guide (Run the Live Duel Yourself)
 
 ### One command
 

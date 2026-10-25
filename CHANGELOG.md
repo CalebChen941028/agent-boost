@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-10-25
+
+### Added
+- **Expanded 18-Task Frontier Live API Suite & 60-Check Offline Harness (`scripts/run-live-benchmarks.mjs`, `npm run benchmark:selftest`)**:
+  - **Ceiling-Break Archetypes (Tasks 13–15)**: Added `LIVE-BLIND-FAULT-LOCALIZATION` (multi-module microservice pipeline blind fault localization across candidate files), `LIVE-HARNESS-INV-DUAL-PACKAGE` (dual ESM/CJS subpath package export packaging failure resolution), and `LIVE-LONG-HORIZON-RESOURCE-LEAK` (debounce timer and event listener leak under 50-connection soak testing).
+  - **High-Intensity Production & Concurrency Suite (Tasks 16–18)**: Ported real-world SWE-bench Pro V2 NodeBB issue (`LIVE-SWE-BENCH-PRO-NODEBB` - 4-dimensional sorting and invariant set intersection), adversarial downstream serializer crash decoy (`LIVE-RED-HERRING-CIRCULAR-DECOY` - strict DTO contract invariants vs upstream circular context leak), and distributed microservices dual-agent contract race (`LIVE-DISTRIBUTED-CONTRACT-RACE` - concurrent gateway and billing protocol v2 synchronization).
+  - **60 Automated Offline Checks**: Expanded zero-API-spend offline selftest from 42 to 60 checks, ensuring 100% deterministic regression protection across all 18 tasks and git rollback machinery.
+- **Empirical Multi-Agent Concurrency Decoupling**:
+  - Live empirical evaluation on `LIVE-DISTRIBUTED-CONTRACT-RACE` demonstrated that agent-boost's Phase 1 planning-time single-ownership decoupling delivers a 1-shot pass (100/100 score, 0 conflicts, 0 repair rounds) consuming **only 35.1% of tokens (5,563 vs 15,836)** and completing in **19.5s (over 2x faster than Solo's 41.8s)**, while uncoordinated subagents suffered destructive write-clobbering on shared contract files and required expensive retry recovery.
+- **Preview Dashboard Integration (`adapters/zcode/report-preview.html`)**:
+  - Added Tasks 16–18 High-Intensity Benchmark Report selector, aligned with default runner output paths for seamless zero-copy verification.
+
+### Fixed
+- **Distributed Contract Signature Scoping**: Explicitly specified exact interface signatures (`routeBillingRequest`, `settleTransaction`) and literal return properties (`cents`, `idempotencyKey`) in T18 brief and subagent scopes, isolating multi-agent concurrency coordination from blind identifier guessing.
+- **Report Preview Selector URL Alignment**: Synchronized report preview drop-down options with default benchmark runner HTML output paths.
+
 ## [0.4.1] - 2026-10-25
 
 ### Added

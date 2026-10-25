@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-10-25
+
+### Added
+- **Unified Standalone CLI & npm Distribution (`bin/agent-boost.mjs`, `npx agent-boost`)**:
+  - Direct executable entrypoint exposing `install`, `uninstall`, `selftest`, `benchmark`, and `report` subcommands.
+  - Zero-clone developer experience: enables executing `npx agent-boost install --target zcode` or running 60 offline checks directly from any terminal.
+  - Configured `"bin": { "agent-boost", "boost" }` and explicit `"files"` manifest in `package.json`, verified via `npm pack --dry-run` with a compact 161.3 kB production footprint.
+  - Dedicated CLI unit test suite (`tests/cli.test.mjs`, 5 tests), expanding test coverage to 46 unit tests.
+- **18-Task Cross-Model Grand Slam Evaluation (`mimo-v2.6-flash` vs `deepseek-v4.1-flash`)**:
+  - Completed 235 live HTTP calls across two top reasoning model families with zero network/protocol failures.
+  - **Empirical Invariant Proof**: Verified 100% interception of multi-agent parallel write collisions in `LIVE-EXPRESS-RACE` across both models (where Solo deterministically failed all 3 retry rounds).
+  - **Live LATS Hard Rollback Verification**: Observed and recorded automated `git reset --hard` rollback and pristine-checkpoint recovery in live traffic (`LIVE-REDUX-STRUCTURAL-SHARING` on `mimo-v2.6-flash`, git reflog evidence `6af795d HEAD@{0}: reset`) after a baseline regression, recovering to a 100/100 score in Round 1.
+  - **Interactive Cross-Model Comparison Report**: Generated `live-results/cross-model-18tasks-grand-slam.html` and updated preview selector in `adapters/zcode/report-preview.html`.
+- **Dynamic Single-Source-of-Truth Version Resolution**:
+  - Dynamically extracts package version from `package.json` across CLI runners and benchmark report generators, preventing version drift.
+- **CI/CD Packaging Integrity Gate**:
+  - Integrated `npm pack --dry-run` into `.github/workflows/ci.yml` across Node.js 18, 20, and 22 matrices.
+
 ## [0.5.0] - 2026-10-25
 
 ### Added

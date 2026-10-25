@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Benchmark Report Generator for agent-boost (v0.5.0)
+ * Benchmark Report Generator for agent-boost (v0.6.0)
  *
  * Generates interactive, standalone HTML reports, Gantt execution timelines,
  * and cross-model comparison duels from live benchmark result JSON ledgers.
@@ -22,9 +22,9 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 const PKG_VERSION = (() => {
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"));
-    return pkg.version || "0.5.0";
+    return pkg.version || "0.6.0";
   } catch {
-    return "0.5.0";
+    return "0.6.0";
   }
 })();
 

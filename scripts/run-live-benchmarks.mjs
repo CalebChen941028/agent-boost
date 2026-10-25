@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * LIVE API End-to-End Benchmark Runner for agent-boost (v0.5.0)
+ * LIVE API End-to-End Benchmark Runner for agent-boost (v0.6.0)
  * Comparison frame: Solo model (single model, no tools)
- *                 vs model + agent-boost v0.5.0 (model + five-phase toolchain)
+ *                 vs model + agent-boost v0.6.0 (model + five-phase toolchain)
  *
  * Harness nature: 100% live evaluation. Every code artifact in this report is
  * produced by real HTTP calls to the OpenCode Zen gateway
@@ -70,9 +70,9 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 const PKG_VERSION = (() => {
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"));
-    return pkg.version || "0.5.0";
+    return pkg.version || "0.6.0";
   } catch {
-    return "0.5.0";
+    return "0.6.0";
   }
 })();
 

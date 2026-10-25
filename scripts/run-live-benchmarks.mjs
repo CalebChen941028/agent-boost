@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * LIVE API End-to-End Benchmark Runner for agent-boost (v0.4.1)
+ * LIVE API End-to-End Benchmark Runner for agent-boost (v0.5.0)
  * Comparison frame: Solo model (single model, no tools)
- *                 vs model + agent-boost v0.4.1 (model + five-phase toolchain)
+ *                 vs model + agent-boost v0.5.0 (model + five-phase toolchain)
  *
  * Harness nature: 100% live evaluation. Every code artifact in this report is
  * produced by real HTTP calls to the OpenCode Zen gateway
@@ -67,6 +67,14 @@ import {
 import { generateHtmlReport } from "./generate-benchmark-report.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const PKG_VERSION = (() => {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"));
+    return pkg.version || "0.5.0";
+  } catch {
+    return "0.5.0";
+  }
+})();
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -85,7 +93,7 @@ const CONFIG = {
   httpRetries: 3, // network error / 429 / 5xx
   retryBackoffMs: [3000, 9000],
   sessionId: `agent-boost-live-${crypto.randomUUID().slice(0, 8)}`,
-  userAgent: "agent-boost-live-benchmark/0.4.1",
+  userAgent: `agent-boost-live-benchmark/${PKG_VERSION}`,
   soloMaxAttempts: 3,
 };
 
@@ -3047,7 +3055,7 @@ function fmtTokens(n) {
 
 function printHeader(log) {
   log("=".repeat(80));
-  log("  agent-boost v0.4.1 LIVE API End-to-End Benchmark Harness");
+  log(`  agent-boost v${PKG_VERSION} LIVE API End-to-End Benchmark Harness`);
   log(`  Endpoint: ${CONFIG.endpoint}`);
   log(`  Model:    ${CONFIG.model} (temperature ${CONFIG.temperature})`);
   log(`  Session:  ${CONFIG.sessionId}   Run started: ${new Date().toISOString()}`);

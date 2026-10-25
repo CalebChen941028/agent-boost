@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Benchmark Report Generator for agent-boost (v0.4.1)
+ * Benchmark Report Generator for agent-boost (v0.5.0)
  *
  * Generates interactive, standalone HTML reports, Gantt execution timelines,
  * and cross-model comparison duels from live benchmark result JSON ledgers.
@@ -19,6 +19,14 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const PKG_VERSION = (() => {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"));
+    return pkg.version || "0.5.0";
+  } catch {
+    return "0.5.0";
+  }
+})();
 
 function escapeHtml(str) {
   if (str === null || str === undefined) return "";
@@ -504,7 +512,7 @@ export function generateHtmlReport(summary) {
 <body>
   <div class="container">
     <header>
-      <div class="header-badge">LIVE API BENCHMARK • v0.4.1</div>
+      <div class="header-badge">LIVE API BENCHMARK • v\${PKG_VERSION}</div>
       <h1>Dual-Track Evaluation Scoreboard</h1>
       <div class="meta-subtitle">
         <div class="meta-item">Model: <strong>${escapeHtml(model)}</strong></div>
@@ -609,7 +617,7 @@ export function generateHtmlReport(summary) {
     </div>
 
     <footer>
-      agent-boost v0.4.1 • Evaluated live against OpenCode Zen Gateway • Zero Third-Party Dependencies
+      agent-boost v\${PKG_VERSION} • Evaluated live against OpenCode Zen Gateway • Zero Third-Party Dependencies
     </footer>
   </div>
 
@@ -745,7 +753,7 @@ export function generateMultiModelReport(summaryA, summaryB) {
 <body>
   <div class="container">
     <header>
-      <div class="header-badge">CROSS-MODEL COMPARISON • v0.4.1</div>
+      <div class="header-badge">CROSS-MODEL COMPARISON • v\${PKG_VERSION}</div>
       <h1>${escapeHtml(modelA)} vs ${escapeHtml(modelB)} Live Duel</h1>
       <div class="meta-subtitle">
         <div class="meta-item">Endpoint: <strong>${escapeHtml(endpoint)}</strong></div>
@@ -839,7 +847,7 @@ export function generateMultiModelReport(summaryA, summaryB) {
     </div>
 
     <footer>
-      agent-boost v0.4.1 • Cross-Model Benchmark Comparison • Zero Third-Party Dependencies
+      agent-boost v\${PKG_VERSION} • Cross-Model Benchmark Comparison • Zero Third-Party Dependencies
     </footer>
   </div>
 

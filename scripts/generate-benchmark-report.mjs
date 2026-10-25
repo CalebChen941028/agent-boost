@@ -512,7 +512,7 @@ export function generateHtmlReport(summary) {
 <body>
   <div class="container">
     <header>
-      <div class="header-badge">LIVE API BENCHMARK • v\${PKG_VERSION}</div>
+      <div class="header-badge">LIVE API BENCHMARK • v${PKG_VERSION}</div>
       <h1>Dual-Track Evaluation Scoreboard</h1>
       <div class="meta-subtitle">
         <div class="meta-item">Model: <strong>${escapeHtml(model)}</strong></div>
@@ -617,7 +617,7 @@ export function generateHtmlReport(summary) {
     </div>
 
     <footer>
-      agent-boost v\${PKG_VERSION} • Evaluated live against OpenCode Zen Gateway • Zero Third-Party Dependencies
+      agent-boost v${PKG_VERSION} • Evaluated live against OpenCode Zen Gateway • Zero Third-Party Dependencies
     </footer>
   </div>
 
@@ -753,7 +753,7 @@ export function generateMultiModelReport(summaryA, summaryB) {
 <body>
   <div class="container">
     <header>
-      <div class="header-badge">CROSS-MODEL COMPARISON • v\${PKG_VERSION}</div>
+      <div class="header-badge">CROSS-MODEL COMPARISON • v${PKG_VERSION}</div>
       <h1>${escapeHtml(modelA)} vs ${escapeHtml(modelB)} Live Duel</h1>
       <div class="meta-subtitle">
         <div class="meta-item">Endpoint: <strong>${escapeHtml(endpoint)}</strong></div>
@@ -847,7 +847,7 @@ export function generateMultiModelReport(summaryA, summaryB) {
     </div>
 
     <footer>
-      agent-boost v\${PKG_VERSION} • Cross-Model Benchmark Comparison • Zero Third-Party Dependencies
+      agent-boost v${PKG_VERSION} • Cross-Model Benchmark Comparison • Zero Third-Party Dependencies
     </footer>
   </div>
 

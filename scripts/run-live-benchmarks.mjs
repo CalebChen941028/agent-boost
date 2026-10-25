@@ -2824,31 +2824,32 @@ export const LIVE_TASKS = [
       {
         name: "gateway-team",
         scope:
-          "Upgrade Gateway to Protocol v2.0.0: Update src/contracts/protocol.js to export PROTOCOL_VERSION = '2.0.0' " +
+          "Upgrade Gateway to Protocol v2.0.0: Update shared src/contracts/protocol.js to export PROTOCOL_VERSION = '2.0.0' " +
           "and export const GATEWAY_ACTIONS = ['ROUTE_PAYMENT', 'REFUND_PAYMENT']. " +
-          "Update src/services/gateway.js to require request.idempotencyKey (throw Error('Missing idempotencyKey') if missing) " +
-          "and return action: 'ROUTE_PAYMENT'.",
+          "Update src/services/gateway.js to preserve export function routeBillingRequest(request), require request.idempotencyKey " +
+          "(throw Error('Missing idempotencyKey') if missing), and return { routed: true, version: PROTOCOL_VERSION, action: 'ROUTE_PAYMENT', idempotencyKey: request.idempotencyKey, payload: request }.",
         sharedFiles: ["src/contracts/protocol.js"],
         allowedFiles: ["src/contracts/protocol.js", "src/services/gateway.js"],
       },
       {
         name: "billing-team",
         scope:
-          "Upgrade Billing Service to Protocol v2.0.0: Update src/contracts/protocol.js to export PROTOCOL_VERSION = '2.0.0' " +
+          "Upgrade Billing Service to Protocol v2.0.0: Update shared src/contracts/protocol.js to export PROTOCOL_VERSION = '2.0.0' " +
           "and export const BILLING_STATUSES = ['SETTLED', 'REJECTED', 'PENDING']. " +
-          "Update src/services/billing.js to return status: 'SETTLED', cents: Math.round(Number(routedRequest.payload.amount) * 100), " +
-          "and idempotencyKey: routedRequest.idempotencyKey.",
+          "Update src/services/billing.js to preserve export function settleTransaction(routedRequest), and return " +
+          "{ status: 'SETTLED', version: PROTOCOL_VERSION, cents: Math.round(Number(routedRequest.payload.amount) * 100), idempotencyKey: routedRequest.idempotencyKey }.",
         sharedFiles: ["src/contracts/protocol.js"],
         allowedFiles: ["src/contracts/protocol.js", "src/services/billing.js"],
       },
     ],
     brief:
       "Two feature teams upgrade a distributed microservices billing platform to Protocol v2.0.0 in parallel.\n\n" +
-      "Architecture & Contracts:\n" +
-      "- Team A (Gateway Team): Updates API gateway routing in src/services/gateway.js to enforce request.idempotencyKey and use GATEWAY_ACTIONS[0] ('ROUTE_PAYMENT'). Also updates shared contract src/contracts/protocol.js.\n" +
-      "- Team B (Billing Team): Updates billing settlement in src/services/billing.js to calculate integer cents and return status: BILLING_STATUSES[0] ('SETTLED'). Also updates shared contract src/contracts/protocol.js.\n" +
-      "- Shared Protocol Contract: src/contracts/protocol.js must export PROTOCOL_VERSION = '2.0.0', SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP'], GATEWAY_ACTIONS = ['ROUTE_PAYMENT', 'REFUND_PAYMENT'], and BILLING_STATUSES = ['SETTLED', 'REJECTED', 'PENDING'].\n\n" +
-      "Both teams must coordinate their changes so the shared protocol contract retains BOTH teams' exports and end-to-end payment routing succeeds.",
+      "Architecture & Function Interface Contracts:\n" +
+      "- Shared Protocol Contract (src/contracts/protocol.js): Must export PROTOCOL_VERSION = '2.0.0', SUPPORTED_CURRENCIES = ['USD', 'EUR', 'GBP'], GATEWAY_ACTIONS = ['ROUTE_PAYMENT', 'REFUND_PAYMENT'], and BILLING_STATUSES = ['SETTLED', 'REJECTED', 'PENDING'].\n" +
+      "- Team A (Gateway Team in src/services/gateway.js): Updates export function routeBillingRequest(request). Requires request.idempotencyKey (throws Error('Missing idempotencyKey') if missing), validates currency against SUPPORTED_CURRENCIES, and returns { routed: true, version: PROTOCOL_VERSION, action: GATEWAY_ACTIONS[0], idempotencyKey: request.idempotencyKey, payload: request }.\n" +
+      "- Team B (Billing Team in src/services/billing.js): Updates export function settleTransaction(routedRequest). Returns { status: BILLING_STATUSES[0], version: PROTOCOL_VERSION, cents: Math.round(Number(routedRequest.payload.amount) * 100), idempotencyKey: routedRequest.idempotencyKey }.\n\n" +
+      "Concurrency Challenge:\n" +
+      "Both teams concurrently modify the shared contract src/contracts/protocol.js. They must coordinate so the shared protocol contract retains BOTH teams' exports and end-to-end payment routing succeeds.",
     fixture(ws) {
       writeWorkspaceFiles(ws, {
         "package.json": PKG_JSON,

@@ -29,3 +29,7 @@ jobs:
         run: |
           npm run benchmark:selftest
 
+      - name: Verify package release contents (npm pack dry-run)
+        run: |
+          npm pack --dry-run
+

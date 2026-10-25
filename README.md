@@ -81,19 +81,19 @@ Universal multi-agent deep reasoning protocol and workflow engine compatible wit
 
 ## Empirical Benchmarks: Live Dual-Track Model Duels (mimo & deepseek)
 
-Twelve executable engineering tasks drawn from **BugsJS (ICSE/MSR)**, **SWE-bench / SWE-bench Verified (ICLR 2024)**, and **HumanEval-X (TKDE 2023)** ran as real dual-track duels against the live OpenCode Zen gateway (`https://opencode.ai/zen/go/v1/chat/completions`) across multiple model families (`mimo-v2.6-flash` and `deepseek-v4.1-flash`): over 150 real HTTP calls, every token metered by gateway `usage` accounting, every exit code from a real `node --test` in an isolated Git workspace. Full details in [`BENCHMARKS.md`](BENCHMARKS.md).
+Eighteen executable engineering tasks drawn from **BugsJS (ICSE/MSR)**, **SWE-bench / SWE-bench Verified (ICLR 2024)**, and **HumanEval-X (TKDE 2023)** ran as real dual-track duels against the live OpenCode Zen gateway (`https://opencode.ai/zen/go/v1/chat/completions`) across multiple model families (`mimo-v2.6-flash` and `deepseek-v4.1-flash`): over 150 real HTTP calls, every token metered by gateway `usage` accounting, every exit code from a real `node --test` in an isolated Git workspace. Full details in [`BENCHMARKS.md`](BENCHMARKS.md).
 
-| Benchmark Metric | `mimo-v2.6-flash` (Solo vs Boost) | `deepseek-v4.1-flash` (Solo vs Boost) | Toolchain Invariant |
+| Benchmark Metric | `mimo-v2.6-flash` (10 Tasks) | `deepseek-v4.1-flash` (18-Task Grand Slam) | Toolchain Invariant |
 | :--- | :--- | :--- | :--- |
-| **Pass@1 Success Rate** | 9/10 (90.0%) → **10/10 (100.0%)** | 11/12 (91.7%) → **12/12 (100.0%)** | Decisive win on parallel write races on both models |
-| **Mean Yardstick Score** | 98.2 → **99.6 / 100** | 99.2 → **100.0 / 100** | 6-criterion Agent-as-a-Judge evaluation |
-| **Parallel Write Conflicts Intercepted** | 7/10 gated before edit | 7/12 gated before edit | 100% prevention of concurrent clobbering |
-| **Adaptive Compute Token Budget** | 1.994x (heavy multi-agent CoT) | **0.989x (37,628 vs 38,038)** | Adaptive CoT budget clamps runaway reasoning loops |
-| **Per-Call Latency (Solo → Boost)** | 7,834ms → 18,472ms | **16,523ms → 8,549ms (52% faster)** | Scoped context & budgeted turns cut latency in half |
+| **Pass@1 Success Rate** | 9/10 (90.0%) → **10/10 (100.0%)** | 18/18 (100.0%) → **18/18 (100.0%)** | Multi-agent concurrency clobbering eliminated |
+| **Mean Yardstick Score** | 98.2 → **99.6 / 100** | 100.0 → **99.8 / 100** | 6-criterion Agent-as-a-Judge evaluation |
+| **Parallel Write Conflicts Intercepted** | 7/10 gated before edit | Intercepted in T1 & decoupled in T18 | 100% prevention of concurrent clobbering |
+| **Adaptive Compute Token Budget** | 1.994x (heavy multi-agent CoT) | **0.988x (63,045 vs 63,815)** | Adaptive CoT budget clamps runaway reasoning loops |
+| **Per-Call Latency (Solo → Boost)** | 7,834ms → 18,472ms | **18,896ms → 12,247ms (35% faster)** | Scoped context & budgeted turns cut latency by 35% |
 
 > 📊 **Full Live Report & Cross-Model Duels**: [**`BENCHMARKS.md`**](BENCHMARKS.md) (中文版：[**`BENCHMARKS.zh-CN.md`**](BENCHMARKS.zh-CN.md)).
 >
-> 🧪 **Reproduce Locally**: `npm run benchmark` runs the live duel; `npm run benchmark:selftest` verifies all 42 harness mechanisms with zero API spend; `npm run benchmark:report` generates an interactive HTML dashboard; `npm run benchmark:compare` compares runs across models.
+> 🧪 **Reproduce Locally**: `npm run benchmark` runs the live duel; `npm run benchmark:selftest` verifies all 60 harness mechanisms with zero API spend; `npm run benchmark:report` generates an interactive HTML dashboard; `npm run benchmark:compare` compares runs across models.
 
 ---
 

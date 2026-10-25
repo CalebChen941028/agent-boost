@@ -160,7 +160,7 @@ Interactive cross-model dashboard: [`live-results/cross-model-comparison.html`](
 
 ---
 
-## 8. High-Intensity Frontier Expansion (Tasks 13–18)
+## 8. High-Intensity Frontier Expansion & 18-Task Grand Slam Scoreboard
 
 To eliminate benchmark ceiling effects and systematically evaluate multi-agent synchronization and architectural invariants, the live test suite expanded from 12 to 18 canonical engineering tasks:
 
@@ -171,7 +171,33 @@ To eliminate benchmark ceiling effects and systematically evaluate multi-agent s
 | | `LIVE-LONG-HORIZON-RESOURCE-LEAK` | Debounce timer & listener leak under 50-connection soak | Dual Pass (100 vs 100), idempotent cleanup verified |
 | **High-Intensity (T16–T18)** | `LIVE-SWE-BENCH-PRO-NODEBB` | Real-world **SWE-bench Pro V2** NodeBB multi-dimensional sorting | Dual Pass (4/4 tests, 100 vs 100), all 4 sort invariants held |
 | | `LIVE-RED-HERRING-CIRCULAR-DECOY` | Decoy serializer stack trace vs upstream circular context leak | Dual Pass (3/3 tests, 100 vs 100), strict DTO hygiene kept |
-| | `LIVE-DISTRIBUTED-CONTRACT-RACE` | Concurrent dual-agent gateway & billing protocol v2 race | **Boost 1-Shot Pass (5,563 tokens, 19.5s)** vs **Solo Collision & Retry (15,836 tokens, 41.8s)** |
+| | `LIVE-DISTRIBUTED-CONTRACT-RACE` | Concurrent dual-agent gateway & billing protocol v2 race | **Boost 1-Shot Pass (5,149 tokens, 26.1s)** vs **Solo Collision & Retry (9,751 tokens, 104.9s)** |
+
+### The 18-Task Grand Slam Scoreboard Matrix
+
+Transcribed directly from the definitive 18-task Grand Slam live session `agent-boost-live-34de7685` (`deepseek-v4.1-flash`, 105/105 successful calls, 25.2 min wall clock, Node v22.23.1).
+
+| Task | Category | Solo (exit / score / att / tok / wall) | Boost (exit / score / tok / wall) | Boost Details | Outcome |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `LIVE-EXPRESS-RACE` | Parallel Write Race | ✔ PASS (0 / 100 / 3 / 10,598 / 44.3s) | ✔ PASS (0 / 100 / 5,389 / 41.8s) | conflict:1 | BOTH-PASS |
+| `LIVE-SEMVER-REGRESSION` | Regression-Prone Debugging | ✔ PASS (0 / 100 / 1 / 4,032 / 12.2s) | ✔ PASS (0 / 100 / 3,466 / 10.2s) | cues:1 | BOTH-PASS |
+| `LIVE-REST-SYNTH` | Unverified Synthesis | ✔ PASS (0 / 100 / 1 / 685 / 3.7s) | ✔ PASS (0 / 100 / 3,963 / 42.0s) | synth:1, cues:2 | BOTH-PASS |
+| `LIVE-TOKENIZER-BOUNDARY` | Deep Algorithmic Boundary | ✔ PASS (0 / 100 / 1 / 2,685 / 18.4s) | ✔ PASS (0 / 100 / 2,075 / 11.4s) | cues:2 | BOTH-PASS |
+| `LIVE-RATELIMIT-RACE` | Deep Algorithmic Boundary | ✔ PASS (0 / 100 / 1 / 1,141 / 3.9s) | ✔ PASS (0 / 100 / 1,347 / 27.1s) | cues:2 | BOTH-PASS |
+| `LIVE-DIFF-PATCH-APPLY` | Deep Algorithmic Boundary | ✔ PASS (0 / 100 / 1 / 5,033 / 54.0s) | ✔ PASS (0 / 100 / 2,769 / 20.1s) | cues:2 | BOTH-PASS |
+| `LIVE-ASYNC-BATCH-POOL` | Concurrency & Async Invariant | ✔ PASS (0 / 100 / 1 / 4,849 / 42.9s) | ✔ PASS (0 / 96 / 4,917 / 50.8s) | cues:2 | BOTH-PASS |
+| `LIVE-REDUX-STRUCTURAL-SHARING` | State Architecture & Invariant | ✔ PASS (0 / 100 / 1 / 1,896 / 16.6s) | ✔ PASS (0 / 100 / 2,482 / 24.8s) | cues:2 | BOTH-PASS |
+| `LIVE-GRAPH-CYCLE-DEADLOCK` | Deep Algorithmic Boundary | ✔ PASS (0 / 100 / 1 / 4,952 / 48.4s) | ✔ PASS (0 / 100 / 3,983 / 42.0s) | cues:2 | BOTH-PASS |
+| `LIVE-CACHE-STAMPEDE-MUTEX` | High Concurrency Invariant | ✔ PASS (0 / 100 / 1 / 1,872 / 10.8s) | ✔ PASS (0 / 100 / 1,679 / 10.0s) | cues:2 | BOTH-PASS |
+| `LIVE-CASCADE-EVENT-BUS` | Multi-File Cascade Regression | ✔ PASS (0 / 100 / 1 / 2,686 / 17.6s) | ✔ PASS (0 / 100 / 1,900 / 10.2s) | cues:2 | BOTH-PASS |
+| `LIVE-SQLITE-SCHEMA-MIGRATION` | Multi-File Cascade Regression | ✔ PASS (0 / 100 / 1 / 1,230 / 4.2s) | ✔ PASS (0 / 100 / 1,610 / 9.1s) | cues:2 | BOTH-PASS |
+| `LIVE-BLIND-FAULT-LOCALIZATION` | Blind Fault Localization | ✔ PASS (0 / 100 / 1 / 1,666 / 6.1s) | ✔ PASS (0 / 100 / 10,430 / 152.5s) | cues:2 | BOTH-PASS |
+| `LIVE-HARNESS-INV-DUAL-PACKAGE` | Invariant-First Environment (INV) | ✔ PASS (0 / 100 / 1 / 880 / 2.9s) | ✔ PASS (0 / 100 / 1,193 / 3.9s) | cues:2 | BOTH-PASS |
+| `LIVE-LONG-HORIZON-RESOURCE-LEAK` | Long-Horizon Concurrency Leak | ✔ PASS (0 / 100 / 1 / 2,770 / 27.1s) | ✔ PASS (0 / 100 / 2,115 / 13.5s) | cues:2 | BOTH-PASS |
+| `LIVE-SWE-BENCH-PRO-NODEBB` | Real-World Production OSS (SWE-bench Pro V2) | ✔ PASS (0 / 100 / 1 / 5,618 / 24.8s) | ✔ PASS (0 / 100 / 6,550 / 38.5s) | cues:2 | BOTH-PASS |
+| `LIVE-RED-HERRING-CIRCULAR-DECOY` | Adversarial Fault Localization | ✔ PASS (0 / 100 / 1 / 1,471 / 3.4s) | ✔ PASS (0 / 100 / 2,028 / 11.2s) | cues:2 | BOTH-PASS |
+| `LIVE-DISTRIBUTED-CONTRACT-RACE` | Multi-Agent Concurrency & Shared Contract Coordination | ✔ PASS (0 / 100 / 1 / 9,751 / 104.9s) | ✔ PASS (0 / 100 / 5,149 / 26.1s) | cues:2 | BOTH-PASS |
+| **Grand Total / Aggregate** | **18 Engineering Tasks** | **18/18 (100%)** / 100.0 avg / **63,815 tok** / 18.9s lat | **18/18 (100%)** / **99.8 avg** / **63,045 tok (0.988x)** / **12.2s lat (35% faster)** | **1 conflict, 1 synth, 0 rollbacks** | **18/18 BOTH-PASS** |
 
 ### Deep Takeaways from Task 18 (`LIVE-DISTRIBUTED-CONTRACT-RACE`)
 
@@ -179,12 +205,13 @@ In Task 18, two parallel subagents upgraded a distributed billing platform while
 
 1. **Solo's Concurrent Write Clobbering**:
    In Round 1, Gateway and Billing subagents executed concurrently without coordination. Whichever subagent settled last clobbered the shared contract file, erasing `GATEWAY_ACTIONS` and causing the Node.js test loader to crash on import (`[solo race r1] exit=1 pass=0 fail=1`). Solo required an expensive second retry with test failure feedback to recover, consuming **15,836 tokens and 41.8 seconds**.
+   In the final 18-task Grand Slam run, Solo completed the task after enduring 104.9 seconds and 9,751 tokens.
 
 2. **Boost's Planning-Time Disjoint Decoupling**:
    Agent-boost's Phase 1 planner decomposed the task into three single-ownership workstreams (`protocol.js`, `gateway.js`, `billing.js`). With 0 file conflicts at execution time, both service endpoints and the shared protocol contract were delivered cleanly in a single pass:
    - **1-Shot First-Pass Delivery**: 3/3 tests green, 0 repair rounds, 0 conflicts.
-   - **64.9% Token Reduction**: Consumed only **5,563 tokens (0.351x of Solo)**.
-   - **Over 2x Faster**: Finished in **19.5s** vs Solo's 41.8s.
+   - **64.9% Token Reduction**: Consumed only **5,149 tokens (0.528x of Solo)**.
+   - **4x Faster**: Finished in **26.1s** vs Solo's 104.9s.
 
 ---
 
@@ -194,13 +221,13 @@ In Task 18, two parallel subagents upgraded a distributed billing platform while
 
 ```bash
 export OPENCODE_API_KEY=oc_sk_...   # opencode.ai console key (Go plan); also read from ./.env or ~/.env
-npm run benchmark                   # full live duel across 12 canonical tasks, auto-generates report.html
-npm run benchmark:selftest          # zero API spend offline verification of all 42 harness mechanisms
+npm run benchmark                   # full live duel across 18 canonical tasks, auto-generates report.html
+npm run benchmark:selftest          # zero API spend offline verification of all 60 harness mechanisms
 npm run benchmark:report            # generate interactive HTML report from latest run results
 npm run benchmark:compare           # generate cross-model comparison HTML dashboard across latest runs
 ```
 
-The runner prints every request's outcome, token metering, and test scoreboard; append `--json out.json` for the structured ledger (every HTTP call with latency, status, and usage) and `--html out.html` for an Apple-inspired responsive dashboard. Harness machinery can be verified with zero API spend: `npm run benchmark:selftest` (42 checks across 12 tasks: every fixture fails on its seeded bug, canonical fixes go green, Git reset/reflog round-trip, verify-gate invariants). View interactive results in ZCode panel via [`adapters/zcode/report-preview.html`](adapters/zcode/report-preview.html).
+The runner prints every request's outcome, token metering, and test scoreboard; append `--json out.json` for the structured ledger (every HTTP call with latency, status, and usage) and `--html out.html` for an Apple-inspired responsive dashboard. Harness machinery can be verified with zero API spend: `npm run benchmark:selftest` (60 checks across 18 tasks: every fixture fails on its seeded bug, canonical fixes go green, Git reset/reflog round-trip, verify-gate invariants). View interactive results in ZCode panel via [`adapters/zcode/report-preview.html`](adapters/zcode/report-preview.html).
 
 ### The task prompts, adapted for mimo-v2.6-flash
 

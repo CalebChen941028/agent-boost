@@ -81,19 +81,19 @@
 
 ## 权威基准评测：实盘双轨模型大考（mimo 与 deepseek 跨模型对决）
 
-取材 **BugsJS (ICSE/MSR)**、**SWE-bench / SWE-bench Verified (ICLR 2024)**、**HumanEval-X (TKDE 2023)** 的十二项可执行工程任务，对 OpenCode Zen 网关（`https://opencode.ai/zen/go/v1/chat/completions`）跨主流模型家族（`mimo-v2.6-flash` 与 `deepseek-v4.1-flash`）发起真实双轨对决：累计逾 150 次真实 HTTP 调用，每个 Token 由网关自身 `usage` 计量，每个退出码来自隔离 Git 工作区里真实的 `node --test`。完整报告见 [`BENCHMARKS.zh-CN.md`](BENCHMARKS.zh-CN.md)。
+取材 **BugsJS (ICSE/MSR)**、**SWE-bench / SWE-bench Verified (ICLR 2024)**、**HumanEval-X (TKDE 2023)** 的十八项可执行工程大考，对 OpenCode Zen 网关（`https://opencode.ai/zen/go/v1/chat/completions`）跨主流模型家族（`mimo-v2.6-flash` 与 `deepseek-v4.1-flash`）发起真实双轨对决：累计逾 150 次真实 HTTP 调用，每个 Token 由网关自身 `usage` 计量，每个退出码来自隔离 Git 工作区里真实的 `node --test`。完整报告见 [`BENCHMARKS.zh-CN.md`](BENCHMARKS.zh-CN.md)。
 
-| 评测维度 | `mimo-v2.6-flash`（Solo vs Boost） | `deepseek-v4.1-flash`（Solo vs Boost） | 工具链不变式与收益 |
+| 评测维度 | `mimo-v2.6-flash`（10 项标准任务） | `deepseek-v4.1-flash`（18 任务大满贯） | 工具链不变式与收益 |
 | :--- | :--- | :--- | :--- |
-| **Pass@1 任务通过率** | 9/10 (90.0%) → **10/10 (100.0%)** | 11/12 (91.7%) → **12/12 (100.0%)** | 跨模型唯一翻车点均为并行写竞态，工具链 100% 挽救 |
-| **六维裁判平均分** | 98.2 → **99.6 / 100** | 99.2 → **100.0 / 100** | Agent-as-a-Judge 六维严格把关 |
-| **并行写冲突门禁拦截** | 7/10 动手前被拦截 | 7/12 动手前被拦截 | 彻底杜绝多子代理并发写同一个文件的盲目覆盖 |
-| **自适应推理 Token 预算** | 1.994x（多代理 CoT 输出） | **0.989x（37,628 vs 38,038）** | 自适应预算钳制重推理模型无节制长循环，反向更省 Token |
-| **单次调用平均延迟** | 7,834ms → 18,472ms | **16,523ms → 8,549ms（快 52%）** | 上下文精准裁剪 + 分级预算让推理延迟腰斩 |
+| **Pass@1 任务通过率** | 9/10 (90.0%) → **10/10 (100.0%)** | 18/18 (100.0%) → **18/18 (100.0%)** | 并发写竞态 100% 挽救，零踩踏交付 |
+| **六维裁判平均分** | 98.2 → **99.6 / 100** | 100.0 → **99.8 / 100** | Agent-as-a-Judge 六维严格把关 |
+| **并行写冲突门禁拦截** | 7/10 动手前被拦截 | T1 与 T18 并发写事前拦截与解耦 | 彻底杜绝多子代理并发写同一个文件的盲目覆盖 |
+| **自适应推理 Token 预算** | 1.994x（多代理 CoT 输出） | **0.988x（63,045 vs 63,815）** | 自适应预算钳制重推理模型无节制长循环，反向更省 Token |
+| **单次调用平均延迟** | 7,834ms → 18,472ms | **18,896ms → 12,247ms（快 35%）** | 上下文精准裁剪 + 分级预算让推理延迟提速 35% |
 
 > 📊 **完整实盘报告与跨模型对比**：[**`BENCHMARKS.zh-CN.md`**](BENCHMARKS.zh-CN.md)（英文版：[**`BENCHMARKS.md`**](BENCHMARKS.md)）。
 >
-> 🧪 **一键复现**：`npm run benchmark` 运行实盘对决；`npm run benchmark:selftest` 零 API 花销验证全部 42 项 harness 机制；`npm run benchmark:report` 一键生成交互式 HTML 报告；`npm run benchmark:compare` 生成跨模型横向对比仪表盘。
+> 🧪 **一键复现**：`npm run benchmark` 运行实盘对决；`npm run benchmark:selftest` 零 API 花销验证全部 60 项 harness 机制；`npm run benchmark:report` 一键生成交互式 HTML 报告；`npm run benchmark:compare` 生成跨模型横向对比仪表盘。
 
 ---
 

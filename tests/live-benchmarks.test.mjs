@@ -133,7 +133,7 @@ function add(a, b) {
 </replacement>
 </replace>
 <file path="src/helper.js">
-export const VERSION = 2;
+module.exports = { VERSION: 2 };
 </file>
 <file path="../escape.js">
 throw new Error("should be blocked");
@@ -153,7 +153,7 @@ throw new Error("should be blocked");
     // Seed math.js with CRLF and trailing whitespace to test Tier 2 normalized matching
     fs.writeFileSync(
       path.join(tmpWs, "src", "math.js"),
-      "// header\r\nfunction add(a, b) {   \r\n  return a - b;\t\r\n}\r\nexport { add };\r\n",
+      "// header\r\nfunction add(a, b) {   \r\n  return a - b;\t\r\n}\r\nmodule.exports = { add };\r\n",
       "utf8",
     );
 
@@ -165,7 +165,10 @@ throw new Error("should be blocked");
 
     const updatedMath = fs.readFileSync(path.join(tmpWs, "src", "math.js"), "utf8");
     assert.ok(updatedMath.includes("return a + b;"), "Surgical <replace> must update target block");
-    assert.ok(updatedMath.includes("// header") && updatedMath.includes("export { add };"), "Surrounding lines must be preserved");
+    assert.ok(
+      updatedMath.includes("// header") && updatedMath.includes("module.exports = { add };"),
+      "Surrounding lines must be preserved",
+    );
 
     const syntaxOk = verifyWorkspaceSyntax(tmpWs, writeRes.written);
     assert.equal(syntaxOk.ok, true, "Valid JS files must pass pre-flight syntax verification");

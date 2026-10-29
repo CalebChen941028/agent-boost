@@ -483,6 +483,19 @@ export function verifyWorkspaceSyntax(ws, relFiles = []) {
           .join(" ");
         errors.push(`${rel}: ${msg}`);
       }
+    } else if (/\.sh$/i.test(rel)) {
+      const check = spawnSync("sh", ["-n", abs], {
+        encoding: "utf8",
+        env: CHILD_ENV,
+      });
+      if (check.status !== 0) {
+        const msg = String(check.stderr || check.stdout || "shell syntax error")
+          .trim()
+          .split("\n")
+          .slice(-2)
+          .join(" ");
+        errors.push(`${rel}: ${msg}`);
+      }
     } else if (/\.json$/i.test(rel)) {
       try {
         JSON.parse(fs.readFileSync(abs, "utf8"));

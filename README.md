@@ -22,7 +22,10 @@ Universal multi-agent deep reasoning protocol and workflow engine compatible wit
 | **OpenCode** | [`adapters/opencode/agents.json`](adapters/opencode/agents.json) | `./install.sh --target opencode` | Full (`roles/*.en.md` & `*.zh.md`) |
 | **WorkBuddy** | [`adapters/workbuddy/boost.md`](adapters/workbuddy/boost.md) | `./install.sh --target workbuddy` | Full (`en` / `zh`) |
 | **ZCode Dynamic Workflow** | [`adapters/zcode/boost.dwf.ts`](adapters/zcode/boost.dwf.ts) | `./install.sh --target zcode` | Auto-detect & Explicit (`lang: auto\|en\|zh`) |
+| **Antigravity / Gemini** | [`skills/boost/SKILL.md`](skills/boost/SKILL.md) | `./install.sh --target antigravity` | Full (`en` / `zh`) |
+| **Universal `.agents`** | [`skills/boost/SKILL.md`](skills/boost/SKILL.md) | `./install.sh --target agents` | Full (`en` / `zh`) |
 | **Cursor / Windsurf / Cline / Aider / Generic** | [`adapters/generic/boost.md`](adapters/generic/boost.md) | `./install.sh --target cursor\|windsurf\|generic` | Full (`en` / `zh`) |
+| **All Detected Agents (Batch)** | All matching adapters | `./install.sh --target all` | Auto-detect & Explicit (`--lang auto\|en\|zh`) |
 
 ---
 
@@ -67,12 +70,13 @@ Universal multi-agent deep reasoning protocol and workflow engine compatible wit
 
 ---
 
-## Key Capabilities in v0.4.x (Adaptive Compute, LATS Rollback, Cross-Model Benchmark & Yardstick Scoring)
+## Key Capabilities in v0.6.1 (Surgical Block Edits, Pre-Flight Syntax Gate, Adaptive Compute, LATS Rollback & Yardstick Scoring)
 
-- **Dynamic Test-Time Compute Allocation (`evaluateTaskComplexity`)**: Dynamically allocates compute budget based on task complexity, prompt length, and modified file count across `simple` (1 workstream, 1 repair round), `standard` (2–3 workstreams, 3 rounds), and `hard` (3–5 workstreams, 5 rounds) tiers.
-- **LATS Regression Rollback & Git Checkpoints**: Takes an automated git snapshot before each repair round. If a repair candidate escalates test failures or introduces regressions, the tree search automatically rolls back (`git reset --hard`).
-- **Self-Debugging Reproduction Test Synthesis**: Verifiers automatically discover repository test harnesses and synthesize deterministic reproduction test scripts (e.g. `verify_synth.sh`) when native tests are missing or unconfigured.
-- **Agent-as-a-Judge Quantitative Yardstick Scoring (`calculateYardstickScore`)**: Computes a weighted 6-criterion score (DELIVERY, CONFORMANCE, FIDELITY, INTERNAL_CONSISTENCY, OPERATIONAL_FITNESS, FINISH) with an explicit 85-point passing gate.
+- **Dynamic Test-Time Compute Allocation (`evaluateTaskComplexity`)**: Dynamically allocates compute budget based on task complexity, prompt length, and modified file count across `simple` (1 workstream, 2 repair rounds), `standard` (2–3 workstreams, 3 rounds), and `hard` (3–5 workstreams, 5 rounds) tiers.
+- **Surgical Block Edit Protocol & Pre-Flight Syntax Verification (`extractSurgicalBlocks`, `verifyWorkspaceSyntax`)**: Supports targeted `<replace path="...">` block edits with symmetric CRLF and per-line trailing-whitespace fallback alongside full-file blocks, and validates module syntax (`node --check`, `sh -n`) before invoking full test suites.
+- **LATS Regression Rollback & Git Checkpoints**: Takes an automated git snapshot before each repair round. If a repair candidate escalates test failures or introduces regressions, the tree search automatically rolls back (`git reset --hard` while preserving synthesized runners).
+- **Self-Debugging Reproduction Test Synthesis**: Verifiers automatically discover repository test harnesses and synthesize deterministic, syntax-validated reproduction test scripts (`verify_synth.sh`) when native tests are missing or unconfigured.
+- **Agent-as-a-Judge Quantitative Yardstick Scoring (`calculateYardstickScore` & `formatConclusion`)**: Computes a weighted 6-criterion score (DELIVERY, CONFORMANCE, FIDELITY, INTERNAL_CONSISTENCY, OPERATIONAL_FITNESS, FINISH) with an explicit 85-point passing gate enforced directly by `formatConclusion`.
 - **A-MEM / ExpeL Intelligent Experience Cue Recall (`matchExperienceCues`)**: Intelligently searches and ranks relevant historical `<experience>` cues from `.agent-boost/experiences.md` to guide task planning and avoid past pitfalls.
 - **Invariant Pre-Flight (INV-First) Priority**: Root-Cause Diagnoser validates runtime environment and test runner invariants (`isInvariantFailure`) before analyzing domain application code.
 - **100% Single-Source-of-Truth (SSOT) Parity (10/10 functions)**: `scripts/build.mjs` verifies exact parameter and function body parity across TypeScript, JavaScript, and ZCode workflows.
@@ -102,8 +106,16 @@ Eighteen executable engineering tasks drawn from **BugsJS (ICSE/MSR)**, **SWE-be
 `install.sh` auto-detects system locale (`--lang auto` defaults to `en` on international systems and `zh` on Chinese locales) and supports all mainstream coding agents:
 
 ```bash
+# Batch install into all detected local coding agents
+./install.sh --target all --lang auto
+npx agent-boost install --target all
+
 # ZCode Dynamic Workflow
 ./install.sh --target zcode --lang auto
+
+# Antigravity / Gemini & Universal .agents
+./install.sh --target antigravity --lang auto
+./install.sh --target agents --lang auto
 
 # Claude Code CLI (~/.claude/commands & ~/.claude/skills/boost)
 ./install.sh --target claude --lang en

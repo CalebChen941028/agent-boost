@@ -9,13 +9,14 @@ Boost is a runtime-agnostic multi-agent state machine designed for deep reasonin
   - **Experience Memory Recall**: Intelligently matches relevant historical experience cues (`matchExperienceCues`) from `.agent-boost/experiences.md` based on keyword relevance and confidence, filtering out confounded noise.
   - **Planner**: Answers the Expert Four Questions per workstream, declares explicit disjoint `targetFiles` ownership for parallel `code` workstreams, and evaluates stretch acceptance criteria.
   - **Deterministic Conflict Gate & Critic**: Automatically detects overlapping `targetFiles` across parallel `code` workstreams (`detectTargetFileConflicts`), challenges unproven causal premises, and applies Harness² `KEEP_BASE` discipline (approving sound plans without noisy churn).
-- **Phase 2: Parallel Workstream Execution**:
+- **Phase 2: Parallel Workstream Execution & Surgical Block Edit Discipline**:
   - Tiered dispatch (`heavy` vs. `light` models) using `Promise.allSettled` with automatic 1x escalation retry on strong models.
+  - **Surgical Block Edits & Budget Urgency**: On existing files, prefer targeted block replacement (`<replace path="...">`) over whole-file rewrites to preserve untouched logic and avoid context tax; prioritize emitting concrete code edits when turn/token budgets approach limits.
   - **All-Failed Circuit Breaker**: If all workstreams fail after retry, short-circuits Phase 3 and Phase 4 to prevent wasted verification tokens and reports execution failure directly.
-- **Phase 3: Verification Gate, Invariant Pre-flight, LATS Rollback & INV/DOM Diagnosis**:
-  - Deterministic test execution (`verifyCommand`), automatic test runner discovery (`npm test`, `pytest`, `cargo test`, `go test`), or synthesized reproduction check (`verify_synth.sh`), preserving combined `stdout`/`stderr` tail (2000 chars) and computing DJB2-hashed normalized 20-line failure signatures.
-  - **Invariant Pre-flight (INV-first)**: Detects syntax, environment, missing module, or runner invocation crashes before domain logic debugging, directing Fixer to repair invariant mechanics first.
-  - **LATS Checkpoint & Rollback**: Snapshots a Git checkpoint before repair attempts. If a fix attempt causes catastrophic regression, rolls back to checkpoint before exploring alternative repair branches.
+- **Phase 3: Verification Gate, Pre-flight Syntax Check, LATS Rollback & INV/DOM Diagnosis**:
+  - Deterministic test execution (`verifyCommand`), automatic test runner discovery (`npm test`, `pytest`, `cargo test`, `go test`), or syntax-validated reproduction check (`verify_synth.sh`), preserving combined `stdout`/`stderr` tail (2000 chars) and computing DJB2-hashed normalized 20-line failure signatures.
+  - **Invariant Pre-flight (INV-first & Syntax Gate)**: Verifies modified modules compile cleanly (`node --check`, `python -m py_compile`, `sh -n`) and detects environment, missing module, or runner invocation crashes before domain logic debugging, directing Fixer to repair invariant mechanics first.
+  - **LATS Checkpoint & Rollback**: Snapshots a Git checkpoint before repair attempts. If a fix attempt causes catastrophic regression, rolls back to checkpoint (`git reset --hard` while preserving `verify_synth.sh`) before exploring alternative repair branches.
   - **Fix History Ledger (`fixHistory`)**: Tracks every repair round's `{ round, summary, modifiedPaths, dimension, rolledBack }` so downstream agents never inspect stale Phase 2 context.
   - **Stall-Triggered INV/DOM Diagnosis**: When consecutive failure/gap signatures match, escalates to the Root-Cause Diagnoser to separate **INV** (procedure, tool/runner invocation, build state) from **DOM** (domain logic, algorithmic edge cases) before minimal repair.
 - **Phase 4: Independent 6-Criterion Review & Quantitative Yardstick Scoring**:

@@ -8,7 +8,7 @@
 
 **面向复杂工程疑难的多智能体推理、分层并行执行、确定性验收修复与跨任务经验沉淀工作流。**
 
-通用型多智能体深度推理协议与工作流引擎，全面兼容 **OpenAI Codex、Claude Code、DeepSeek、OpenCode、WorkBuddy、ZCode** 以及主流 AI 编程智能体（**Cursor、Windsurf、Cline、Roo Code、GitHub Copilot、Aider、Gemini CLI**），原生提供 **中英双语（`zh` / `en`）** 自适应支持。
+通用型多智能体深度推理协议与工作流引擎，全面兼容 **OpenAI Codex、Claude Code、DeepSeek、OpenCode、WorkBuddy、ZCode、Antigravity / Gemini** 以及主流 AI 编程智能体（**Cursor、Windsurf、Cline、Roo Code、GitHub Copilot、Aider**），原生提供 **中英双语（`zh` / `en`）** 自适应支持。
 
 ---
 
@@ -22,7 +22,10 @@
 | **OpenCode** | [`adapters/opencode/agents.json`](adapters/opencode/agents.json) | `./install.sh --target opencode` | 完整支持 (`roles/*.zh.md` & `*.en.md`) |
 | **WorkBuddy** | [`adapters/workbuddy/boost.md`](adapters/workbuddy/boost.md) | `./install.sh --target workbuddy` | 完整支持 (`zh` / `en`) |
 | **ZCode 动态工作流** | [`adapters/zcode/boost.dwf.ts`](adapters/zcode/boost.dwf.ts) | `./install.sh --target zcode` | 自动检测与显式指定 (`lang: auto\|zh\|en`) |
+| **Antigravity / Gemini** | [`skills/boost/SKILL.md`](skills/boost/SKILL.md) | `./install.sh --target antigravity` | 完整支持 (`zh` / `en`) |
+| **Universal `.agents`** | [`skills/boost/SKILL.md`](skills/boost/SKILL.md) | `./install.sh --target agents` | 完整支持 (`zh` / `en`) |
 | **Cursor / Windsurf / Cline / Aider / 通用** | [`adapters/generic/boost.md`](adapters/generic/boost.md) | `./install.sh --target cursor\|windsurf\|generic` | 完整支持 (`zh` / `en`) |
+| **全部已检测平台一键同步** | 全部已安装 Agent 目录 | `./install.sh --target all` | 完整支持 (`zh` / `en`) |
 
 ---
 
@@ -33,16 +36,17 @@
    │
    ▼
 1. 动态算力预算与经验检索（Scaling Test-Time Compute + A-MEM）
-   ├── 动态算力分配：evaluateTaskComplexity 分级配置工作流并发数 (1–5) 与修复轮次 (1–5)
+   ├── 动态算力分配：evaluateTaskComplexity 分级配置工作流并发数 (1–5) 与修复轮次 (2–5)
    ├── 终身经验检索：matchExperienceCues 从 .agent-boost/experiences.md 智能召回匹配经验卡片
    ├── 方案规划：顶尖专家四问 + 显式声明各工作流 targetFiles 文件边界 + 评估激进验收线
-   ├── 冲突检测：detectTargetFileConflicts 拦截并行 code 工作流之间的 targetFiles 重叠冲突
+   ├── 冲突检测：detectTargetFileConflicts 拦截并行 code 工作流之间的 targetFiles 重叠冲突并确定性去重
    └── 方案评审：质疑未经验证的因果假定；遵循 KEEP_BASE 克制原则，无实质问题直接放行
    │
    ▼
 2. 混合编队分层并行执行与全败熔断
    ├── 核心逻辑与疑难调查分配强模型
    ├── 机械样板、文档与配置下沉轻量模型（allSettled + 失败自动升级强模型重试 1 次）
+   ├── 手术刀块级局部替换与写盘前语法预检（<replace> + node --check / sh -n）
    └── 全败熔断：若所有工作流重试后均异常失败，立即短路跳过后续无意义验收，直接输出中止结论
    │
    ▼
@@ -61,18 +65,19 @@
    │
    ▼
 5. 综合报告、客观结论文案与终身经验沉淀
-   ├── 结论文案综合考量执行失败工作流、未闭环验收缺口与复核量化得分，拒绝盲目声称完成
+   ├── 结论文案综合考量执行失败工作流、未解决验收缺口与复核量化得分，拒绝盲目声称完成
    └── 终身经验持久化：追加有效可迁移 <experience> 经验卡片至 .agent-boost/experiences.md
 ```
 
 ---
 
-## v0.4.x 核心升级（自适应算力预算、LATS 回滚、跨模型基准与六维量化标尺门禁）
+## v0.6.1 核心升级（自适应算力预算、手术刀块级替换、LATS 回滚与六维量化标尺门禁）
 
-- **测试期动态算力分配 (`evaluateTaskComplexity`)**：依据任务复杂度、描述长度与目标文件数，自适应分配 `simple`（1 工作流，1 轮修复）、`standard`（2–3 工作流，3 轮修复）与 `hard`（3–5 工作流，5 轮修复）三档测试期算力与验证深度。
-- **Git 快照检查点与 LATS 回滚机制**：每轮修复前自动打 Git 快照；一旦当前修复分支导致测试失败增多或错误特征恶化，立即自动执行 `git reset --hard` 回滚到检查点。
-- **Self-Debugging 自动化用例合成**：验收员自动探测仓库测试套件；在测试套件缺失或未覆盖目标代码时，自动合成独立复现脚本（如 `verify_synth.sh`）进行确定性闭环验收。
-- **Agent-as-a-Judge 六维量化标尺评分 (`calculateYardstickScore`)**：基于六大验收维度赋予量化权重（DELIVERY: 25, CONFORMANCE: 20, FIDELITY: 15, INTERNAL_CONSISTENCY: 15, OPERATIONAL_FITNESS: 15, FINISH: 10），设置 85 分及格门禁与零 high 缺陷红线。
+- **测试期动态算力分配 (`evaluateTaskComplexity`)**：依据任务复杂度、描述长度与目标文件数，自适应分配 `simple`（1 工作流，2 轮修复）、`standard`（2–3 工作流，3 轮修复）与 `hard`（3–5 工作流，5 轮修复）三档测试期算力与验证深度。
+- **手术刀块级替换与写盘前语法预检 (`applySurgicalFileWrites` / `verifyWorkspaceSyntax`)**：修改既有文件时优先使用 `<replace path="..."><target>...</target><replacement>...</replacement></replace>` 块级局部替换（兼容 CRLF 与行尾空白），并在写盘后自动执行 `node --check`、`sh -n` 与 JSON 解析预检，阻断大文件改写截断导致的语法崩溃。
+- **Git 快照检查点与 LATS 回滚机制**：每轮修复前自动打 Git 快照；一旦当前修复分支导致测试失败增多或错误特征恶化，立即自动执行 `git reset --hard` 回滚到检查点（同时保护合成复现脚本 `verify_synth.sh` 不被误删）。
+- **Self-Debugging 自动化用例合成**：验收员自动探测仓库测试套件；在测试套件缺失或未覆盖目标代码时，自动合成独立复现脚本（如 `verify_synth.sh`）并经 `sh -n` 语法校验后执行确定性全流程验收。
+- **Agent-as-a-Judge 六维量化标尺评分 (`calculateYardstickScore`)**：基于六大验收维度赋予量化权重（DELIVERY: 25, CONFORMANCE: 20, FIDELITY: 15, INTERNAL_CONSISTENCY: 15, OPERATIONAL_FITNESS: 15, FINISH: 10），设置 85 分及格门禁与零 high 缺陷红线；总分低于 85 分（即便零 high 缺陷）同样由 `formatConclusion` 强制拦截。
 - **A-MEM / ExpeL 终身经验智能检索 (`matchExperienceCues`)**：支持从 `.agent-boost/experiences.md` 按关键词与标签智能召回历史成功/规避经验，引导规划阶段主动防御。
 - **机制预检优先 (INV-First) 根因诊断**：根因诊断员优先验证运行环境、CLI 参数与编译构建产物不变式（`isInvariantFailure`），杜绝因机制故障误伤领域业务逻辑。
 - **单一真源（SSOT）10 大核心纯函数 100% 对齐**：`scripts/build.mjs` 强制验证 TypeScript、JavaScript 与 ZCode 工作流之间 10 个纯函数的函数体 100% 参数与逻辑一致。
@@ -120,14 +125,24 @@
 # WorkBuddy 桌面/Web 智能体 (~/.workbuddy/workflows & ~/.workbuddy/skills/boost)
 ./install.sh --target workbuddy --lang zh
 
+# Antigravity / Gemini (~/.gemini/antigravity/skills/boost & ~/.gemini/config/skills/boost)
+./install.sh --target antigravity --lang zh
+
+# 通用 .agents 技能目录 (~/.agents/skills/boost)
+./install.sh --target agents --lang zh
+
+# 一键安装至全部已检测的 Agent 平台
+./install.sh --target all --lang auto
+
 # Cursor / Windsurf / Cline / Aider / 通用智能体
 ./install.sh --target cursor --dest /path/to/project
 ./install.sh --target generic --dest /path/to/project
 ```
 
-支持按目标平台独立卸载并清理备份：
+支持按目标平台独立卸载（或 `--target all` 全量卸载）并清理备份：
 ```bash
 ./uninstall.sh --target claude --purge-backups
+./uninstall.sh --target all --purge-backups
 ```
 
 ---

@@ -69,7 +69,10 @@ Automatically detect the host agent runtime and execute the corresponding protoc
 ### E. WorkBuddy Workspace & Desktop/Web Agents (`adapters/workbuddy/boost.md`)
 - Mount as a workspace skill (`SKILL.md`) or inject the 5-phase protocol into `AGENTS.md`.
 
-### F. Codex CLI & Generic Single-Agent Environments (`adapters/codex/protocol.md`, `adapters/generic/boost.md`)
+### F. Antigravity & Universal `.agents` Environments (`~/.gemini/antigravity/skills/boost`, `~/.agents/skills/boost`)
+- Installed via `npx agent-boost install --target antigravity` (also mirrors to `~/.gemini/config/skills/boost`) or `npx agent-boost install --target agents` (or `--target all` for auto-detected batch installation).
+
+### G. Codex CLI & Generic Single-Agent Environments (`adapters/codex/protocol.md`, `adapters/generic/boost.md`)
 - Execute the 5-phase state machine sequentially by explicitly switching role personas (`[Role: Solution Planner]` $\rightarrow$ `[Role: Plan Critic]` $\rightarrow$ `[Role: Workstream Executor]` $\rightarrow$ `[Role: Independent Verifier / Diagnoser / Fixer]` $\rightarrow$ `[Role: Independent Reviewer]` $\rightarrow$ `[Role: Report Scribe]`).
 
 ---
@@ -86,13 +89,14 @@ Automatically detect the host agent runtime and execute the corresponding protoc
 4. **Independent Causal Critique & `KEEP_BASE` Discipline (独立因果评审与 `KEEP_BASE` 克制原则)**:
    - The Critic inspects real workspace code in read-only mode and challenges unproven causal assumptions in the task premise.
    - Following Harness² `KEEP_BASE` discipline, if the initial plan is grounded and conflict-free, the Critic approves it without inventing unnecessary churn.
-5. **Fault-Tolerant Parallel Execution & Circuit Breaker (`Promise.allSettled` + 全败熔断)**:
+5. **Fault-Tolerant Parallel Execution, Surgical Block Edits & Circuit Breaker (`Promise.allSettled` + 手术式编辑与全败熔断)**:
    - Parallel workstreams run via `Promise.allSettled`; any rejected workstream automatically escalates to a strong model for 1x retry.
+   - Executors prefer surgical block replacements (`<replace path="...">`) over whole-file rewrites on existing files to preserve untouched code and reduce context tax, and prioritize concrete edits when turn/token budgets run low.
    - If all workstreams fail after retry, the engine trips the circuit breaker, skipping Phase 3 and Phase 4 to avoid wasting tokens and reporting an explicit aborted conclusion.
-6. **Deterministic Verification Gate, Invariant Pre-flight & Test Synthesis (确定性验收与 Invariant 预检)**:
-   - Discovers existing test runners (`npm test`, `pytest`, `cargo`, `go`) or synthesizes reproduction checks when `verifyCommand` is not supplied.
+6. **Deterministic Verification Gate, Pre-flight Syntax Check & Test Synthesis (确定性验收、语法预检与用例合成)**:
+   - Discovers existing test runners (`npm test`, `pytest`, `cargo`, `go`) or synthesizes syntax-validated reproduction checks (`verify_synth.sh` verified via `sh -n` / `node --check`) when `verifyCommand` is not supplied.
    - Preserves the **last 2000 characters** of combined `stdout` + `stderr` (retaining assertion stack traces).
-   - Invariant Pre-flight (INV-first): Catches syntax, module import, or runner invocation crashes first; directs Fixer to resolve INV defects before domain logic debugging.
+   - Invariant Pre-flight (INV-first): Verifies module syntax/imports (`node --check`, `python -m py_compile`) and catches runner invocation crashes first; directs Fixer to resolve INV defects before domain logic debugging.
 7. **LATS Checkpoint & Regression Rollback (树搜索检查点与回滚)**:
    - Snapshots a Git checkpoint before repair attempts. If a fix attempt causes catastrophic regression, rolls back to checkpoint before exploring alternative repair branches.
 8. **Stall Detection & Harness² `INV`/`DOM` Diagnosis (停滞检测与双维度根因诊断)**:

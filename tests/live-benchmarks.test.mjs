@@ -1,6 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { LIVE_TASKS, offlineSelftest } from "../scripts/run-live-benchmarks.mjs";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import {
+  LIVE_TASKS,
+  offlineSelftest,
+  normalizeForMatching,
+  extractSurgicalBlocks,
+  applySurgicalFileWrites,
+  verifyWorkspaceSyntax,
+} from "../scripts/run-live-benchmarks.mjs";
 import { generateHtmlReport, generateMarkdownSummary, generateMultiModelReport, renderExecutionTimelineSvg } from "../scripts/generate-benchmark-report.mjs";
 
 test("Live Benchmark Suite: 18 canonical live engineering tasks are defined with required metadata", () => {
@@ -104,4 +114,74 @@ test("Benchmark Report Generator: renders SVG timeline and generates cross-model
   assert.ok(crossHtml.includes("deepseek-v4.1-flash"), "Report must include model B");
   assert.ok(crossHtml.includes("LIVE-EXPRESS-RACE"), "Report must include task row");
   assert.ok(crossHtml.includes("DUAL BOOST PASS"), "Report must include dual pass badge");
+});
+
+test("Surgical Block Edit & Pre-Flight Syntax Verification: parses <replace>, tolerates CRLF/trailing spaces, blocks path traversal, and validates syntax", () => {
+  assert.equal(normalizeForMatching("const a = 1;  \r\nconst b = 2;\t\r\n"), "const a = 1;\nconst b = 2;\n");
+
+  const llmOutput = `
+<replace path="src/math.js">
+<target>
+function add(a, b) {
+  return a - b;
+}
+</target>
+<replacement>
+function add(a, b) {
+  return a + b;
+}
+</replacement>
+</replace>
+<file path="src/helper.js">
+export const VERSION = 2;
+</file>
+<file path="../escape.js">
+throw new Error("should be blocked");
+</file>
+`;
+
+  const blocks = extractSurgicalBlocks(llmOutput);
+  const replaceBlocks = blocks.filter((b) => b.type === "replace");
+  const fileBlocks = blocks.filter((b) => b.type === "file");
+  assert.equal(replaceBlocks.length, 1);
+  assert.equal(replaceBlocks[0].path, "src/math.js");
+  assert.equal(fileBlocks.length, 2);
+
+  const tmpWs = fs.mkdtempSync(path.join(os.tmpdir(), "boost-surgical-test-"));
+  try {
+    fs.mkdirSync(path.join(tmpWs, "src"), { recursive: true });
+    // Seed math.js with CRLF and trailing whitespace to test Tier 2 normalized matching
+    fs.writeFileSync(
+      path.join(tmpWs, "src", "math.js"),
+      "// header\r\nfunction add(a, b) {   \r\n  return a - b;\t\r\n}\r\nexport { add };\r\n",
+      "utf8",
+    );
+
+    const writeRes = applySurgicalFileWrites(tmpWs, blocks, ["src/math.js", "src/helper.js"]);
+    assert.deepEqual(writeRes.written.sort(), ["src/helper.js", "src/math.js"]);
+    assert.deepEqual(writeRes.escaped, ["../escape.js"]);
+    assert.deepEqual(writeRes.failed, []);
+    assert.ok(!fs.existsSync(path.join(tmpWs, "..", "escape.js")), "Path traversal must be blocked");
+
+    const updatedMath = fs.readFileSync(path.join(tmpWs, "src", "math.js"), "utf8");
+    assert.ok(updatedMath.includes("return a + b;"), "Surgical <replace> must update target block");
+    assert.ok(updatedMath.includes("// header") && updatedMath.includes("export { add };"), "Surrounding lines must be preserved");
+
+    const syntaxOk = verifyWorkspaceSyntax(tmpWs, writeRes.written);
+    assert.equal(syntaxOk.ok, true, "Valid JS files must pass pre-flight syntax verification");
+
+    // Introduce a syntax error and verify verifyWorkspaceSyntax catches it
+    fs.writeFileSync(path.join(tmpWs, "src", "broken.js"), "function broken( { return 1;", "utf8");
+    const syntaxBadJs = verifyWorkspaceSyntax(tmpWs, ["src/broken.js"]);
+    assert.equal(syntaxBadJs.ok, false);
+    assert.ok(syntaxBadJs.errors[0].startsWith("src/broken.js:"));
+
+    // Introduce malformed JSON and verify verifyWorkspaceSyntax catches it
+    fs.writeFileSync(path.join(tmpWs, "package.json"), "{ invalid json ", "utf8");
+    const syntaxBadJson = verifyWorkspaceSyntax(tmpWs, ["package.json"]);
+    assert.equal(syntaxBadJson.ok, false);
+    assert.ok(syntaxBadJson.errors[0].startsWith("package.json:"));
+  } finally {
+    fs.rmSync(tmpWs, { recursive: true, force: true });
+  }
 });

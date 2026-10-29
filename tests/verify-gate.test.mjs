@@ -723,3 +723,68 @@ test("calculateYardstickScore quantitatively evaluates 6 Harness² criteria and 
   const weightedRes = calculateYardstickScore(mixedFindings, customWeights);
   assert.equal(weightedRes.overallScore, 98);
 });
+
+test("formatConclusion enforces < 85 Yardstick score gate even with zero high-severity findings", () => {
+  const fiveMediumFindings = [
+    { what: "Delivery gap 1", severity: "medium", criterion: "delivery" },
+    { what: "Delivery gap 2", severity: "medium", criterion: "delivery" },
+    { what: "Delivery gap 3", severity: "medium", criterion: "delivery" },
+    { what: "Delivery gap 4", severity: "medium", criterion: "delivery" },
+    { what: "Delivery gap 5", severity: "medium", criterion: "delivery" },
+  ];
+  const scoreRes = calculateYardstickScore(fiveMediumFindings);
+  assert.equal(scoreRes.overallScore, 81);
+  assert.equal(scoreRes.passed, false);
+
+  const zhRes = formatConclusion("Refactor gateway", 2, fiveMediumFindings, [], "zh", 0);
+  assert.equal(zhRes.hasBlockingIssues, true, "Score 81/100 (< 85) must block completion in zh");
+  assert.ok(zhRes.conclusion.includes("81/100 低于 85 分门禁"));
+  assert.ok(!zhRes.conclusion.includes("已完成并通过验证"));
+
+  const enRes = formatConclusion("Refactor gateway", 2, fiveMediumFindings, [], "en", 0);
+  assert.equal(enRes.hasBlockingIssues, true, "Score 81/100 (< 85) must block completion in en");
+  assert.ok(enRes.conclusion.includes("yardstick score 81/100 below 85 threshold"));
+  assert.ok(!enRes.conclusion.includes("completed and verified"));
+});
+
+test("uninstall.sh supports --target all and target aliases (claude-code, gemini, dsh)", () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "agent-boost-all-test-"));
+  try {
+    const env = { ...process.env, HOME: tmpHome };
+    // Create mock directories so --target all detects them
+    fs.mkdirSync(path.join(tmpHome, ".claude"), { recursive: true });
+    fs.mkdirSync(path.join(tmpHome, ".gemini"), { recursive: true });
+    fs.mkdirSync(path.join(tmpHome, ".deepseek"), { recursive: true });
+    fs.mkdirSync(path.join(tmpHome, ".agents"), { recursive: true });
+
+    execFileSync("bash", [path.join(rootDir, "install.sh"), "--target", "all", "--lang", "en"], {
+      env,
+      encoding: "utf8",
+    });
+
+    const manifestDir = path.join(tmpHome, ".local", "share", "agent-boost");
+    assert.ok(fs.existsSync(path.join(manifestDir, "install-manifest-claude.json")));
+    assert.ok(fs.existsSync(path.join(manifestDir, "install-manifest-antigravity.json")));
+    assert.ok(fs.existsSync(path.join(manifestDir, "install-manifest-deepseek.json")));
+    assert.ok(fs.existsSync(path.join(manifestDir, "install-manifest-agents.json")));
+
+    // Uninstall via alias claude-code -> claude
+    execFileSync("bash", [path.join(rootDir, "uninstall.sh"), "--target", "claude-code"], {
+      env,
+      encoding: "utf8",
+    });
+    assert.ok(!fs.existsSync(path.join(manifestDir, "install-manifest-claude.json")), "claude-code alias must uninstall claude");
+    assert.ok(fs.existsSync(path.join(manifestDir, "install-manifest-antigravity.json")));
+
+    // Uninstall remaining via --target all
+    execFileSync("bash", [path.join(rootDir, "uninstall.sh"), "--target", "all"], {
+      env,
+      encoding: "utf8",
+    });
+    assert.ok(!fs.existsSync(path.join(manifestDir, "install-manifest-antigravity.json")));
+    assert.ok(!fs.existsSync(path.join(manifestDir, "install-manifest-deepseek.json")));
+    assert.ok(!fs.existsSync(path.join(manifestDir, "install-manifest-agents.json")));
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});

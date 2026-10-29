@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/CalebChen941028/agent-boost/actions/workflows/ci.yml/badge.svg)](https://github.com/CalebChen941028/agent-boost/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version: 0.6.0](https://img.shields.io/badge/version-0.6.0-green.svg)](VERSION)
+[![Version: 0.6.1](https://img.shields.io/badge/version-0.6.1-green.svg)](VERSION)
 
 [English](BENCHMARKS.md) | [简体中文](BENCHMARKS.zh-CN.md)
 
@@ -11,7 +11,7 @@ This report answers one question with metered live traffic: with the same model 
 - **Solo mimo-v2.6-flash (control)**: one model, bare prompts, no tools. No file-conflict gate, no Git rollback, no reproduction-test synthesis, no lifelong memory, no independent judge.
 - **mimo-v2.6-flash + agent-boost (treatment)**: the same brain driving the v0.4.0 five-phase state machine — `evaluateTaskComplexity` compute tiers, `matchExperienceCues` recall, `detectTargetFileConflicts` ownership gating, per-workstream execution, LATS Git checkpoints with real `git reset --hard` rollback, `verify_synth.sh` test synthesis, and `calculateYardstickScore` six-criterion judging.
 
-The harness is [`scripts/run-live-benchmarks.mjs`](scripts/run-live-benchmarks.mjs). Run `npm run benchmark` (or `npm run benchmark:live`) and the same machinery places real HTTP calls from your own account. Offline, run `npm run benchmark:selftest` to verify all 42 harness mechanisms with zero API spend. Generate interactive visual HTML reports via `npm run benchmark:report`. Compare multi-model duels via `npm run benchmark:compare`.
+The harness is [`scripts/run-live-benchmarks.mjs`](scripts/run-live-benchmarks.mjs). Run `npm run benchmark` (or `npm run benchmark:live`) and the same machinery places real HTTP calls from your own account. Offline, run `npm run benchmark:selftest` to verify all 60 harness mechanisms with zero API spend. Generate interactive visual HTML reports via `npm run benchmark:report`. Compare multi-model duels via `npm run benchmark:compare`.
 
 ### Run facts
 

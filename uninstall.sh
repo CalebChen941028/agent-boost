@@ -16,7 +16,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -h|--help)
-      echo "Usage: $0 [--target zcode|claude|codex|opencode|deepseek|workbuddy|cursor|windsurf|cline|aider|generic] [--purge-backups]"
+      echo "Usage: $0 [--target all|zcode|claude|codex|antigravity|agents|opencode|deepseek|workbuddy|cursor|windsurf|cline|aider|generic] [--purge-backups]"
       exit 0
       ;;
     *)
@@ -25,6 +25,13 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+case "$TARGET" in
+  claude-code) TARGET="claude" ;;
+  gemini) TARGET="antigravity" ;;
+  dsh) TARGET="deepseek" ;;
+  all) TARGET="" ;;
+esac
 
 MANIFEST_DIR="$HOME/.local/share/agent-boost"
 

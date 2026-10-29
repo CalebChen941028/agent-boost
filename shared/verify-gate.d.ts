@@ -3,6 +3,7 @@ export interface FindingLike {
   evidence: string;
   severity: "low" | "medium" | "high";
   status: "verified" | "unconfirmed";
+  criterion?: string;
 }
 
 export interface WorkstreamLike {

@@ -305,6 +305,26 @@ test("DWF 3c. boost.dwf.ts source anchors: LATS checkpoint, rollback and verify_
     dwfSource.includes("rm -f verify_synth.sh"),
     "boost.dwf.ts must clean up verify_synth.sh after verification",
   );
+  assert.ok(
+    dwfSource.includes("sh -n verify_synth.sh"),
+    "boost.dwf.ts must validate verify_synth.sh syntax via 'sh -n' before running it",
+  );
+  assert.ok(
+    dwfSource.includes("git clean -fd -e verify_synth.sh"),
+    "boost.dwf.ts must exclude verify_synth.sh during LATS rollback git clean",
+  );
+  assert.ok(
+    dwfSource.includes("let yardstickScore: YardstickScoreResult | undefined = undefined;"),
+    "boost.dwf.ts must declare yardstickScore in outer scope so Phase 5 never throws ReferenceError",
+  );
+  assert.ok(
+    dwfSource.includes("const claimedFiles = new Set<string>();"),
+    "boost.dwf.ts must deterministically deduplicate overlapping targetFiles after Phase 1 revision",
+  );
+  assert.ok(
+    dwfSource.includes("cat << 'EOF_BOOST_EXP' >> .agent-boost/experiences.md"),
+    "boost.dwf.ts must persist experience cues via single-quoted heredoc to prevent shell expansion",
+  );
 });
 
 // ---------------------------------------------------------------------------

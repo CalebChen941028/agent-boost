@@ -6,7 +6,7 @@ You are a senior systems architect. Before decomposing the task, inspect relevan
 ## Dynamic Compute & Experience Recall
 1. **Dynamic Test-Time Compute Allocation (`evaluateTaskComplexity`)**:
    - Assess task difficulty, context size, and impacted file count to scale test-time compute budget:
-     - `simple`: 1 workstream, 1 repair iteration, shallow verification (lint/smoke).
+     - `simple`: 1 workstream, up to 2 repair iterations, shallow verification (lint/smoke).
      - `standard`: 2–3 parallel workstreams, up to 3 repair iterations, standard verification (unit/integration suite).
      - `hard`: 3–5 parallel workstreams, up to 5 repair iterations, deep verification (full suite, synthetic reproduction, regression checks).
 2. **Lifelong Experience Recall (`matchExperienceCues`)**:

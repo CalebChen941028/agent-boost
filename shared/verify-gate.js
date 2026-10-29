@@ -159,8 +159,13 @@ export function formatConclusion(
   const highSeverityIssues = safeFindings.filter(
     (f) => f && String(f.severity || "").trim().toLowerCase() === "high",
   );
+  const yardstick = calculateYardstickScore(safeFindings);
+  const yardstickFailed = !yardstick.passed && highSeverityIssues.length === 0;
   const hasBlockingIssues =
-    safeGaps.length > 0 || highSeverityIssues.length > 0 || failedWorkstreamCount > 0;
+    safeGaps.length > 0 ||
+    highSeverityIssues.length > 0 ||
+    yardstickFailed ||
+    failedWorkstreamCount > 0;
 
   if (lang === "en") {
     if (workstreamCount > 0 && failedWorkstreamCount >= workstreamCount) {
@@ -183,6 +188,8 @@ export function formatConclusion(
     if (safeGaps.length > 0) reasons.push(`${safeGaps.length} acceptance gap(s) unresolved`);
     if (highSeverityIssues.length > 0)
       reasons.push(`${highSeverityIssues.length} high-severity review issue(s) identified`);
+    if (yardstickFailed)
+      reasons.push(`yardstick score ${yardstick.overallScore}/100 below 85 threshold`);
 
     return {
       conclusion: `Task "${shortTask}" implemented with open issues (${reasons.join(", ")}): see findings and report for resolution path.`,
@@ -210,6 +217,7 @@ export function formatConclusion(
   if (failedWorkstreamCount > 0) reasons.push(`${failedWorkstreamCount} 条工作流执行失败`);
   if (safeGaps.length > 0) reasons.push(`${safeGaps.length} 个验收缺口待处理`);
   if (highSeverityIssues.length > 0) reasons.push(`${highSeverityIssues.length} 个高风险复核缺陷待解决`);
+  if (yardstickFailed) reasons.push(`六维量化评分 ${yardstick.overallScore}/100 低于 85 分门禁`);
 
   return {
     conclusion: `任务「${shortTask}」已实现但存在未闭环问题（${reasons.join("，")}）：详见报告与 findings。`,

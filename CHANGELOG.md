@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-10-29
+
+### Added
+- **Surgical Block Edit Protocol & Pre-Flight Syntax Verification (`scripts/run-live-benchmarks.mjs`, `protocol/boost.md`, `skills/boost/SKILL.md`, `roles/executor.*.md`)**:
+  - Exported `normalizeForMatching`, `extractSurgicalBlocks`, `applySurgicalFileWrites`, and `verifyWorkspaceSyntax` in `scripts/run-live-benchmarks.mjs`.
+  - Enabled `<replace path="..."><target>...</target><replacement>...</replacement></replace>` surgical edits with 3-tier matching (exact match, CRLF-to-LF + per-line `trimEnd`, and outer trim) and path-traversal guards.
+  - Enforced pre-flight syntax checks (`node --check`, `sh -n`, `JSON.parse`) after Phase 2 workstream execution and Phase 3 repair steps to catch truncation before running test suites.
+- **Budget-Aware Action Urgency (`protocol/boost.md`, `roles/*.md`, `adapters/*`)**:
+  - Added strict turn-budget limits prohibiting open-ended exploration loops during execution and repair.
+- **Full Multi-Platform Installer & Uninstaller Symmetry (`install.sh`, `uninstall.sh`)**:
+  - Upgraded `uninstall.sh` with `--target all` (iterating across `zcode`, `claude`, `codex`, `opencode`, `deepseek`, `workbuddy`, `antigravity`, `agents`, `cursor`, `windsurf`, `generic`) and target aliases (`claude-code` -> `claude`, `gemini` -> `antigravity`, `dsh` -> `deepseek`).
+
+### Fixed
+- **Phase 5 `yardstickScore` Block-Scope Bug (`adapters/zcode/boost.dwf.ts`)**:
+  - Hoisted `let yardstickScore: YardstickScoreResult | undefined` above the `if (allWorkstreamsFailed)` branch in `boost.dwf.ts`, eliminating a runtime `ReferenceError` in Phase 5 when building the Scribe prompt and return payload.
+- **Quantitative Yardstick `< 85` Gate Enforcement (`shared/verify-gate.ts`, `shared/verify-gate.js`, `adapters/zcode/boost.dwf.ts`)**:
+  - Updated `formatConclusion` across all 3 SSOT files so a Yardstick score below `85` (even with zero `high`-severity findings, e.g., five `medium` findings yielding `81/100`) sets `hasBlockingIssues: true` and reports the threshold failure in `conclusion`.
+- **Deterministic Post-Revision `targetFiles` Deduplication (`adapters/zcode/boost.dwf.ts`)**:
+  - Added a deterministic deduplication pass after Phase 1 plan revision so no two parallel `code` workstreams ever retain overlapping `targetFiles` ownership.
+- **Synthesized Script Validation & LATS Rollback Protection (`adapters/zcode/boost.dwf.ts`)**:
+  - Validated synthesized `verify_synth.sh` scripts with `sh -n verify_synth.sh` before execution, and excluded `verify_synth.sh` during LATS checkpoint rollback (`git clean -fd -e verify_synth.sh`).
+- **Shell-Safe Experience Persistence (`adapters/zcode/boost.dwf.ts`)**:
+  - Replaced double-quoted `printf` experience persistence with a single-quoted heredoc (`cat << 'EOF_BOOST_EXP' >> .agent-boost/experiences.md`) to prevent shell expansion of backticks or `$` in `<experience>` entries.
+- **TypeScript Definition & Documentation Alignment (`shared/verify-gate.d.ts`, `README*.md`, `roles/planner.*.md`)**:
+  - Added `criterion?: string` to `FindingLike` in `shared/verify-gate.d.ts` and aligned `simple` tier repair budget documentation (`2` repair rounds) across all adapters and role prompts.
+
 ## [0.6.0] - 2026-10-25
 
 ### Added
@@ -32,7 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Empirical Multi-Agent Concurrency Decoupling**:
   - Live empirical evaluation on `LIVE-DISTRIBUTED-CONTRACT-RACE` demonstrated that agent-boost's Phase 1 planning-time single-ownership decoupling delivers a 1-shot pass (100/100 score, 0 conflicts, 0 repair rounds) consuming **only 35.1% of tokens (5,563 vs 15,836)** and completing in **19.5s (over 2x faster than Solo's 41.8s)**, while uncoordinated subagents suffered destructive write-clobbering on shared contract files and required expensive retry recovery.
 - **Preview Dashboard Integration (`adapters/zcode/report-preview.html`)**:
-  - Added Tasks 16–18 High-Intensity Benchmark Report selector, aligned with default runner output paths for seamless zero-copy verification.
+  - Added Tasks 16–18 High-Intensity Benchmark Report selector, aligned with default runner output paths for direct zero-copy verification.
 
 ### Fixed
 - **Distributed Contract Signature Scoping**: Explicitly specified exact interface signatures (`routeBillingRequest`, `settleTransaction`) and literal return properties (`cents`, `idempotencyKey`) in T18 brief and subagent scopes, isolating multi-agent concurrency coordination from blind identifier guessing.
@@ -101,7 +127,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **B7**: `teamProfile` is strictly validated against allowed enum values (`hybrid`, `quality`, `economy`), throwing descriptive errors on invalid inputs.
 
 ### Added
-- Pure TypeScript verification module `shared/verify-gate.ts` with comprehensive unit tests.
+- Pure TypeScript verification module `shared/verify-gate.ts` with full unit tests.
 - Extracted protocol specification `protocol/boost.md` and bilingual role prompts under `roles/`.
 - Multi-agent adapter templates for Claude Code, OpenCode, Codex, and Generic workflows.
 - Clean configuration architecture separating personal credentials into `models.local.json` and providing `models.example.json`.

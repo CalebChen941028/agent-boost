@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * LIVE API End-to-End Benchmark Runner for agent-boost (v0.6.0)
+ * LIVE API End-to-End Benchmark Runner for agent-boost (v0.6.1)
  * Comparison frame: Solo model (single model, no tools)
- *                 vs model + agent-boost v0.6.0 (model + five-phase toolchain)
+ *                 vs model + agent-boost v0.6.1 (model + five-phase toolchain)
  *
  * Harness nature: 100% live evaluation. Every code artifact in this report is
  * produced by real HTTP calls to the OpenCode Zen gateway
@@ -70,9 +70,9 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 const PKG_VERSION = (() => {
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"));
-    return pkg.version || "0.6.0";
+    return pkg.version || "0.6.1";
   } catch {
-    return "0.6.0";
+    return "0.6.1";
   }
 })();
 
@@ -351,6 +351,148 @@ function meanLatencyMs(records) {
 // ---------------------------------------------------------------------------
 // Response parsing (robust fenced-block / JSON extraction)
 // ---------------------------------------------------------------------------
+
+export function normalizeForMatching(text) {
+  return String(text || "")
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n");
+}
+
+export function extractSurgicalBlocks(text) {
+  const blocks = [];
+  if (!text || typeof text !== "string") return blocks;
+
+  // 1. <replace path="..."><target>...</target><replacement>...</replacement></replace>
+  const replaceRe =
+    /<replace\s+path=["']([^"']+)["']\s*>\s*<target>\r?\n?([\s\S]*?)\r?\n?<\/target>\s*<replacement>\r?\n?([\s\S]*?)\r?\n?<\/replacement>\s*<\/replace>/gi;
+  let m;
+  while ((m = replaceRe.exec(text)) !== null) {
+    blocks.push({
+      type: "replace",
+      path: m[1].trim().replace(/^\.?\//, ""),
+      target: m[2],
+      replacement: m[3],
+    });
+  }
+
+  // 2. <file path="...">...</file>
+  const xmlFileRe = /<file\s+path=["']([^"']+)["']\s*>\r?\n?([\s\S]*?)\r?\n?<\/file>/gi;
+  while ((m = xmlFileRe.exec(text)) !== null) {
+    const rawBody = m[2].replace(/^```[a-zA-Z0-9_-]*\r?\n/, "").replace(/\r?\n```$/, "");
+    blocks.push({
+      type: "file",
+      path: m[1].trim().replace(/^\.?\//, ""),
+      content: rawBody,
+    });
+  }
+
+  // 3. ### FILE: path\n```lang\n...\n```
+  const mdFileRe = /###\s*FILE:\s*([^\s`*]+)[^\n]*\n```[a-zA-Z0-9_-]*\n([\s\S]*?)```/g;
+  while ((m = mdFileRe.exec(text)) !== null) {
+    blocks.push({
+      type: "file",
+      path: m[1].trim().replace(/^\.?\//, ""),
+      content: m[2].replace(/\n$/, ""),
+    });
+  }
+
+  return blocks;
+}
+
+export function applySurgicalFileWrites(ws, blocks, allowedFiles = null) {
+  const written = [];
+  const escaped = [];
+  const failed = [];
+  const rootResolved = path.resolve(ws);
+  const allowedSet = Array.isArray(allowedFiles)
+    ? new Set(allowedFiles.map((f) => String(f).replace(/^\.?\//, "").trim()))
+    : null;
+
+  for (const b of blocks || []) {
+    if (!b || !b.path) continue;
+    const rel = String(b.path).replace(/^\.?\//, "").trim();
+    const abs = path.resolve(ws, rel);
+    if (abs !== rootResolved && !abs.startsWith(rootResolved + path.sep)) {
+      escaped.push(rel);
+      continue;
+    }
+    if (allowedSet && !allowedSet.has(rel)) {
+      escaped.push(rel);
+      continue;
+    }
+
+    if (b.type === "replace") {
+      if (!fs.existsSync(abs)) {
+        failed.push(`${rel}: file does not exist for <replace>`);
+        continue;
+      }
+      let original = fs.readFileSync(abs, "utf8");
+      const target = String(b.target ?? "");
+      const replacement = String(b.replacement ?? "");
+      if (target && original.includes(target)) {
+        original = original.replace(target, replacement);
+      } else {
+        const normOriginal = normalizeForMatching(original);
+        const normTarget = normalizeForMatching(target);
+        const normReplacement = replacement.replace(/\r\n/g, "\n");
+        if (normTarget && normOriginal.includes(normTarget)) {
+          original = normOriginal.replace(normTarget, normReplacement);
+        } else {
+          const trimmedTarget = normTarget.trim();
+          const trimmedReplacement = normReplacement.trim();
+          if (trimmedTarget && normOriginal.includes(trimmedTarget)) {
+            original = normOriginal.replace(trimmedTarget, trimmedReplacement);
+          } else {
+            failed.push(`${rel}: target block not found in file`);
+            continue;
+          }
+        }
+      }
+      if (original.length > 0 && !original.endsWith("\n")) original += "\n";
+      fs.writeFileSync(abs, original, "utf8");
+      if (!written.includes(rel)) written.push(rel);
+    } else if (b.type === "file") {
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      let content = String(b.content ?? "");
+      if (content.length > 0 && !content.endsWith("\n")) content += "\n";
+      fs.writeFileSync(abs, content, "utf8");
+      if (!written.includes(rel)) written.push(rel);
+    }
+  }
+
+  return { written, escaped, failed };
+}
+
+export function verifyWorkspaceSyntax(ws, relFiles = []) {
+  const errors = [];
+  for (const rel of relFiles || []) {
+    const abs = path.join(ws, rel);
+    if (!fs.existsSync(abs)) continue;
+    if (/\.(js|mjs|cjs)$/i.test(rel)) {
+      const check = spawnSync(process.execPath, ["--check", abs], {
+        encoding: "utf8",
+        env: CHILD_ENV,
+      });
+      if (check.status !== 0) {
+        const msg = String(check.stderr || check.stdout || "syntax error")
+          .trim()
+          .split("\n")
+          .slice(-2)
+          .join(" ");
+        errors.push(`${rel}: ${msg}`);
+      }
+    } else if (/\.json$/i.test(rel)) {
+      try {
+        JSON.parse(fs.readFileSync(abs, "utf8"));
+      } catch (err) {
+        errors.push(`${rel}: Invalid JSON (${err.message})`);
+      }
+    }
+  }
+  return { ok: errors.length === 0, errors };
+}
 
 function extractFileMap(text) {
   const files = new Map();
@@ -949,13 +1091,18 @@ async function boostPhase2Execute(task, ws, workstreams, records, maxTokens = CO
     );
     records.push(call);
     if (!call.ok || !call.content) continue;
-    const { files, single } = extractFileMap(call.content);
-    if (files && files.size > 0) {
-      for (const [rel, content] of files) {
-        if (w.targetFiles.includes(rel)) writeWorkspaceFiles(ws, { [rel]: content });
+    const surgical = extractSurgicalBlocks(call.content);
+    if (surgical.length > 0) {
+      applySurgicalFileWrites(ws, surgical, w.targetFiles);
+    } else {
+      const { files, single } = extractFileMap(call.content);
+      if (files && files.size > 0) {
+        for (const [rel, content] of files) {
+          if (w.targetFiles.includes(rel)) writeWorkspaceFiles(ws, { [rel]: content });
+        }
+      } else if (single && w.targetFiles.length === 1) {
+        writeWorkspaceFiles(ws, { [w.targetFiles[0]]: single });
       }
-    } else if (single && w.targetFiles.length === 1) {
-      writeWorkspaceFiles(ws, { [w.targetFiles[0]]: single });
     }
   }
 }
@@ -1061,7 +1208,11 @@ async function boostPhase3VerifyAndRepair(task, ws, complexity, records, log, fi
   for (let round = 1; round <= maxRounds && run.exitCode !== 0; round++) {
     events.repairRounds = round;
     const regressed = isBaselineRegression(parsed);
+    const syntaxCheck = verifyWorkspaceSyntax(ws, mutableFiles);
     let repairPrefix = "";
+    if (!syntaxCheck.ok) {
+      repairPrefix += `INV Pre-flight Syntax/JSON Error detected:\n${syntaxCheck.errors.join("\n")}\nFix syntax/formatting errors first before domain logic.\n\n`;
+    }
     if (regressed) {
       // Baseline regression: discard the poisoned state via a REAL hard reset.
       const resetRes = gitResetHard(ws, checkpointSha);
@@ -1076,7 +1227,7 @@ async function boostPhase3VerifyAndRepair(task, ws, complexity, records, log, fi
         events.signatureShifts += 1;
         lastSignature = newSig;
       }
-      repairPrefix =
+      repairPrefix +=
         `Your change REGRESSED previously passing tests (failure signature ${lastSignature}). ` +
         `The repository was rolled back to the last green checkpoint (git reset --hard). ` +
         `Diagnose the root cause first, then apply a scoped fix that satisfies the new tests ` +
@@ -1099,13 +1250,18 @@ async function boostPhase3VerifyAndRepair(task, ws, complexity, records, log, fi
     );
     records.push(repairCall);
     if (!repairCall.ok || !repairCall.content) break;
-    const { files, single } = extractFileMap(repairCall.content);
-    if (files && files.size > 0) {
-      for (const [rel, content] of files) {
-        if (mutableFiles.includes(rel)) writeWorkspaceFiles(ws, { [rel]: content });
+    const surgical = extractSurgicalBlocks(repairCall.content);
+    if (surgical.length > 0) {
+      applySurgicalFileWrites(ws, surgical, mutableFiles);
+    } else {
+      const { files, single } = extractFileMap(repairCall.content);
+      if (files && files.size > 0) {
+        for (const [rel, content] of files) {
+          if (mutableFiles.includes(rel)) writeWorkspaceFiles(ws, { [rel]: content });
+        }
+      } else if (single && mutableFiles.length === 1) {
+        writeWorkspaceFiles(ws, { [mutableFiles[0]]: single });
       }
-    } else if (single && mutableFiles.length === 1) {
-      writeWorkspaceFiles(ws, { [mutableFiles[0]]: single });
     }
     restoreSuite();
     run = runNodeTest(ws);

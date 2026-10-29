@@ -9,7 +9,7 @@
    - 包含 Yardstick 六维标尺量化得分明细（`calculateYardstickScore`）与门禁通过判定。
    - 给出完整改动文件清单与后续建议。
 2. **Harness² 跨任务经验提炼与持久化 (`experience`)**：
-   - 若本次任务在验证或复核中暴露了具有代表性的认知偏差或机制对比（例如某类修复有效而另一类无效），提炼 1 条结构化经验：`dimension`（`INV` 或 `DOM`）、`cue`（触发该经验的通用问题形态，切勿绑死当前任务的硬编码常数）、`lesson`（具体可执行的操作建议）、`verdict`（`helped`）、`confidence` 与 `evidence`。
+   - 若本次任务在验证或复核中暴露出典型认知偏差或机制对比（例如某类修复有效而另一类无效），提炼 1 条结构化经验：`dimension`（`INV` 或 `DOM`）、`cue`（通用触发条件，切勿绑死当前任务常数）、`lesson`（可执行操作建议）、`verdict`（`helped`）、`confidence` 与 `evidence`。
    - 将有效经验通过 `formatExperienceEntry` 追加持久化至工作区终身记忆库 `.agent-boost/experiences.md`。
    - 若本次任务一次顺利通过、或多项改动混杂无法独立归因（`confounded` / `no_observed_effect`），将 `experience` 设为 `null`（即 `NO_ENTRY`），绝不强行编造经验污染后续任务上下文。
 

@@ -223,8 +223,16 @@ elif [[ "$TARGET" == "opencode" ]]; then
   INSTALLED_FILES+=("$WORKFLOW_DEST/agents.json")
   echo "Installed OpenCode agents configuration (lang: $LANG_OPT) and role prompts to $WORKFLOW_DEST"
 elif [[ "$TARGET" == "codex" ]]; then
-  backup_and_copy "$SCRIPT_DIR/adapters/codex/protocol.md" "$WORKFLOW_DEST/protocol.md"
-  echo "Installed Codex protocol to $WORKFLOW_DEST/protocol.md"
+  # Skill-scoped filename: other Codex skill packs share the same workflows directory,
+  # so a generic "protocol.md" would silently overwrite them (and vice versa).
+  backup_and_copy "$SCRIPT_DIR/adapters/codex/protocol.md" "$WORKFLOW_DEST/boost.protocol.md"
+  # Migrate legacy installs: drop the ambiguous protocol.md only when it is byte-identical
+  # to this adapter, i.e. the file content is already preserved under the scoped name.
+  if [[ -f "$WORKFLOW_DEST/protocol.md" ]] && cmp -s "$SCRIPT_DIR/adapters/codex/protocol.md" "$WORKFLOW_DEST/protocol.md"; then
+    rm "$WORKFLOW_DEST/protocol.md"
+    echo "Removed legacy ambiguous $WORKFLOW_DEST/protocol.md (content now in boost.protocol.md)"
+  fi
+  echo "Installed Codex protocol to $WORKFLOW_DEST/boost.protocol.md"
 elif [[ "$TARGET" == "deepseek" ]]; then
   backup_and_copy "$SCRIPT_DIR/adapters/deepseek/boost.md" "$WORKFLOW_DEST/boost.md"
   echo "Installed DeepSeek protocol to $WORKFLOW_DEST/boost.md"

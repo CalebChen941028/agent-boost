@@ -1,6 +1,6 @@
 # agent-boost（深度多智能体推理与 Harness² 自适应攻坚引擎）
 
-[![CI](https://github.com/CalebChen941028/agent-boost/actions/workflows/ci.yml/badge.svg)](https://github.com/CalebChen941028/agent-boost/actions)
+[![CI](https://github.com/CalebChen941028/agent-boost-harness/actions/workflows/ci.yml/badge.svg)](https://github.com/CalebChen941028/agent-boost-harness/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Node 18+](https://img.shields.io/badge/node-18+-blue.svg)](https://nodejs.org/)
 

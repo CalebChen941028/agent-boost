@@ -70,7 +70,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 const PKG_VERSION = (() => {
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"));
-    return pkg.version || "0.6.1";
+    return pkg.version || "0.6.2";
   } catch {
     return "0.6.1";
   }

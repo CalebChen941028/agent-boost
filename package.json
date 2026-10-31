@@ -1,6 +1,6 @@
 {
   "name": "agent-boost",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Multi-agent deep reasoning workflow engine for complex problems",
   "type": "module",
   "main": "shared/verify-gate.js",

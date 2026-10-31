@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.6.4] - 2026-10-31
+
+### Fixed
+- **`--target all` failed when the installer was started as `bash install.sh`**
+  - The batch mode re-executed `"$0"`, which is the bare filename in that case, so it died with `install.sh: command not found` after the first target.
+  - Now resolves an absolute `$SELF` path via `BASH_SOURCE` and forwards `--force` to each per-target run.
+  - Added a regression test that exercises `--target all` end to end.
+
 ## [0.6.3] - 2026-10-31
 
 ### Changed

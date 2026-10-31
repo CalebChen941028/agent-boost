@@ -3,13 +3,17 @@
 # Supports: zcode, claude, codex, opencode, deepseek, workbuddy, cursor, windsurf, cline, aider, generic
 set -euo pipefail
 
+# Absolute path to this script, so --target all can re-exec itself
+# even when it was started as `bash install.sh`.
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+
 TARGET="zcode"
 SKILL_NAME="${SKILL_NAME:-boost-harness}"
 LANG_OPT="auto"
 DRY_RUN=false
 FORCE=false
 DEST=""
-VERSION="$(cat "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/VERSION" 2>/dev/null || echo "0.6.3")"
+VERSION="$(cat "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/VERSION" 2>/dev/null || echo "0.6.4")"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -93,7 +97,7 @@ if [[ "$TARGET" == "all" ]]; then
   for t in "${DETECTED_TARGETS[@]}"; do
     echo ""
     echo "--- Installing for target: $t ---"
-    "$0" --target "$t" --lang "$LANG_OPT" $([[ "$DRY_RUN" == true ]] && echo "--dry-run")
+    "$SELF" --target "$t" --lang "$LANG_OPT" $([[ "$DRY_RUN" == true ]] && echo "--dry-run") $([[ "$FORCE" == true ]] && echo "--force")
   done
   echo ""
   echo "All ${#DETECTED_TARGETS[@]} targets processed successfully."

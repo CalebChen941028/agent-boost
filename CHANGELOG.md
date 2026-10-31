@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [Unreleased]
+
+### Fixed
+- **Codex adapter filename collision (`install.sh`)**
+  - The `codex` target now installs its protocol to `~/.codex/workflows/boost.protocol.md` instead of the shared `protocol.md`, so multiple skill packs (for example `agent-teamwork` and `agent-boost`) can be installed side by side without silently overwriting each other.
+  - If a legacy `~/.codex/workflows/protocol.md` is byte-identical to this adapter, the installer removes it after writing `boost.protocol.md`, keeping content loss at zero.
+  - Added regression coverage for the scoped filename, the legacy migration, and manifest entries.
+
 ## [0.6.1] - 2026-10-29
 
 ### Added

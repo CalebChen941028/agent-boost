@@ -437,7 +437,7 @@ test("uninstall.sh retains shared files when another target manifest is active (
       encoding: "utf8",
     });
 
-    const skillPath = path.join(tmpHome, ".agent-boost", "skills", "boost", "SKILL.md");
+    const skillPath = path.join(tmpHome, ".agent-boost", "skills", "boost-harness", "SKILL.md");
     const manifestDir = path.join(tmpHome, ".local", "share", "agent-boost");
     const manifestGeneric = path.join(manifestDir, "install-manifest-generic.json");
     const manifestCline = path.join(manifestDir, "install-manifest-cline.json");
@@ -487,7 +487,7 @@ test("uninstall.sh retains shared files when legacy install-manifest.json is act
     const manifestDir = path.join(tmpHome, ".local", "share", "agent-boost");
     const manifestCline = path.join(manifestDir, "install-manifest-cline.json");
     const legacyManifest = path.join(manifestDir, "install-manifest.json");
-    const skillPath = path.join(tmpHome, ".agent-boost", "skills", "boost", "SKILL.md");
+    const skillPath = path.join(tmpHome, ".agent-boost", "skills", "boost-harness", "SKILL.md");
 
     // 2. Simulate pre-existing legacy manifest for 'generic' target referencing shared files
     const legacyData = {
@@ -807,8 +807,8 @@ test("codex target installs a skill-scoped protocol and migrates the legacy ambi
       encoding: "utf8",
     });
 
-    const scoped = path.join(workflowsDir, "boost.protocol.md");
-    assert.ok(fs.existsSync(scoped), "boost.protocol.md must be installed");
+    const scoped = path.join(workflowsDir, "boost-harness.protocol.md");
+    assert.ok(fs.existsSync(scoped), "boost-harness.protocol.md must be installed");
     assert.ok(
       !fs.existsSync(path.join(workflowsDir, "protocol.md")),
       "legacy protocol.md must be migrated away so other skill packs can share the directory",
@@ -824,6 +824,62 @@ test("codex target installs a skill-scoped protocol and migrates the legacy ambi
     assert.ok(
       !manifest.files.some((entry) => entry.endsWith(path.join("workflows", "protocol.md"))),
       "manifest must not record the ambiguous filename",
+    );
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test("--name installs under a custom skill name and rewrites the SKILL.md frontmatter", () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "agent-boost-name-"));
+  try {
+    const env = { ...process.env, HOME: tmpHome };
+    execFileSync(
+      "bash",
+      [path.join(rootDir, "install.sh"), "--target", "antigravity", "--lang", "en", "--name", "my-boost"],
+      { env, encoding: "utf8" },
+    );
+
+    const skillMd = path.join(tmpHome, ".gemini", "config", "skills", "my-boost", "SKILL.md");
+    assert.ok(fs.existsSync(skillMd), "custom skill directory must be created");
+    assert.match(fs.readFileSync(skillMd, "utf8"), /^name: my-boost$/m, "frontmatter name must match --name");
+    assert.ok(
+      !fs.existsSync(path.join(tmpHome, ".gemini", "config", "skills", "boost-harness")),
+      "default name must not be installed when --name is given",
+    );
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});
+
+test("installer refuses to overwrite a skill owned by someone else unless --force is passed", () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "agent-boost-guard-"));
+  try {
+    const env = { ...process.env, HOME: tmpHome };
+    const skillDir = path.join(tmpHome, ".gemini", "config", "skills", "boost-harness");
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(path.join(skillDir, "SKILL.md"), "---\nname: someone-elses-skill\ndescription: builtin\n---\n\n# Not ours\n");
+
+    assert.throws(
+      () => execFileSync("bash", [path.join(rootDir, "install.sh"), "--target", "antigravity", "--lang", "en"], { env, encoding: "utf8", stdio: "pipe" }),
+      /Refusing to overwrite/,
+      "installer must refuse a foreign SKILL.md",
+    );
+    assert.match(
+      fs.readFileSync(path.join(skillDir, "SKILL.md"), "utf8"),
+      /someone-elses-skill/,
+      "foreign skill must be left untouched without --force",
+    );
+
+    execFileSync(
+      "bash",
+      [path.join(rootDir, "install.sh"), "--target", "antigravity", "--lang", "en", "--force"],
+      { env, encoding: "utf8" },
+    );
+    assert.match(
+      fs.readFileSync(path.join(skillDir, "SKILL.md"), "utf8"),
+      /^name: boost-harness$/m,
+      "--force must install over the foreign skill",
     );
   } finally {
     fs.rmSync(tmpHome, { recursive: true, force: true });

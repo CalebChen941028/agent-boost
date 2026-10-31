@@ -125,7 +125,7 @@
 # WorkBuddy 桌面/Web 智能体 (~/.workbuddy/workflows & ~/.workbuddy/skills/boost)
 ./install.sh --target workbuddy --lang zh
 
-# Antigravity / Gemini (~/.gemini/antigravity/skills/boost & ~/.gemini/config/skills/boost)
+# Antigravity / Gemini (~/.gemini/config/skills/boost-harness)
 ./install.sh --target antigravity --lang zh
 
 # 通用 .agents 技能目录 (~/.agents/skills/boost)

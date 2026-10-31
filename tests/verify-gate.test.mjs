@@ -885,3 +885,21 @@ test("installer refuses to overwrite a skill owned by someone else unless --forc
     fs.rmSync(tmpHome, { recursive: true, force: true });
   }
 });
+
+test("--target all re-execs the installer even when started as `bash install.sh`", () => {
+  const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "agent-boost-all-"));
+  try {
+    const env = { ...process.env, HOME: tmpHome };
+    execFileSync(
+      "bash",
+      [path.join(rootDir, "install.sh"), "--target", "all", "--lang", "en"],
+      { env, encoding: "utf8" },
+    );
+    assert.ok(
+      fs.existsSync(path.join(tmpHome, ".claude", "skills", "boost-harness", "SKILL.md")),
+      "batch mode must reach the fallback targets instead of failing on `install.sh: command not found`",
+    );
+  } finally {
+    fs.rmSync(tmpHome, { recursive: true, force: true });
+  }
+});

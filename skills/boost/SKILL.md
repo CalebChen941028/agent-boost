@@ -69,7 +69,7 @@ Automatically detect the host agent runtime and execute the corresponding protoc
 ### E. WorkBuddy Workspace & Desktop/Web Agents (`adapters/workbuddy/boost.md`)
 - Mount as a workspace skill (`SKILL.md`) or inject the 5-phase protocol into `AGENTS.md`.
 
-### F. Antigravity & Universal `.agents` Environments (`~/.gemini/antigravity/skills/boost`, `~/.agents/skills/boost`)
+### F. Antigravity & Universal `.agents` Environments (`~/.gemini/config/skills/boost-harness`, `~/.agents/skills/boost-harness`)
 - Installed via `npx agent-boost install --target antigravity` (also mirrors to `~/.gemini/config/skills/boost`) or `npx agent-boost install --target agents` (or `--target all` for auto-detected batch installation).
 
 ### G. Codex CLI & Generic Single-Agent Environments (`adapters/codex/protocol.md`, `adapters/generic/boost.md`)

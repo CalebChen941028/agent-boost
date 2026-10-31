@@ -5,6 +5,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.6.3] - 2026-10-31
+
+### Changed
+- **Installed skill name is now `boost-harness`**
+  - Antigravity gates a built-in `boost` command behind the `boost_command_disabled` flag in the agent runtime; a same-named skill would shadow it once that flag is enabled.
+  - Installing as `boost-harness` keeps `/boost` free for the host implementation while `/boost-harness` runs this protocol.
+  - Added `--name <alias>` and `--force`, plus an install-time guard (exit code 3) against overwriting a `SKILL.md` that declares a different skill.
+
+### Fixed
+- **Antigravity target installed to a directory nothing scans (`install.sh`)**
+  - Skills now go to `~/.gemini/config/skills/<name>`, Antigravity's global discovery root.
+  - Dropped the deprecated `workflows/*.md` write and the redundant config mirror.
+
 ## [0.6.2] - 2026-10-31
 
 ### Fixed

@@ -4,16 +4,26 @@
 set -euo pipefail
 
 TARGET="zcode"
+SKILL_NAME="${SKILL_NAME:-boost-harness}"
 LANG_OPT="auto"
 DRY_RUN=false
+FORCE=false
 DEST=""
-VERSION="$(cat "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/VERSION" 2>/dev/null || echo "0.6.2")"
+VERSION="$(cat "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/VERSION" 2>/dev/null || echo "0.6.3")"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --target)
       TARGET="$2"
       shift 2
+      ;;
+    --name)
+      SKILL_NAME="$2"
+      shift 2
+      ;;
+    --force)
+      FORCE=true
+      shift
       ;;
     --lang)
       LANG_OPT="$2"
@@ -28,7 +38,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -h|--help)
-      echo "Usage: $0 [--target all|zcode|claude|codex|antigravity|agents|deepseek|opencode|workbuddy|cursor|windsurf|cline|aider|generic] [--lang auto|zh|en] [--dry-run] [--dest <path>]"
+      echo "Usage: $0 [--target all|zcode|claude|codex|antigravity|agents|deepseek|opencode|workbuddy|cursor|windsurf|cline|aider|generic] [--lang auto|zh|en] [--name <skill-name>] [--force] [--dry-run] [--dest <path>]"
       exit 0
       ;;
     *)
@@ -45,6 +55,11 @@ if [[ "$LANG_OPT" == "auto" ]]; then
   else
     LANG_OPT="en"
   fi
+fi
+
+if [[ ! "$SKILL_NAME" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+  echo "Invalid --name '$SKILL_NAME'. Use lowercase letters, digits and hyphens." >&2
+  exit 1
 fi
 
 if [[ "$LANG_OPT" != "zh" && "$LANG_OPT" != "en" ]]; then
@@ -89,38 +104,40 @@ case "$TARGET" in
   zcode)
     BASE_DEST="${DEST:-$HOME/.zcode}"
     WORKFLOW_DEST="$BASE_DEST/workflows"
-    SKILL_DEST="$BASE_DEST/skills/boost"
+    SKILL_DEST="$BASE_DEST/skills/$SKILL_NAME"
     ;;
   claude|claude-code)
     TARGET="claude"
     BASE_DEST="${DEST:-$HOME/.claude}"
     WORKFLOW_DEST="$BASE_DEST/commands"
-    SKILL_DEST="$BASE_DEST/skills/boost"
+    SKILL_DEST="$BASE_DEST/skills/$SKILL_NAME"
     MANIFEST_FILE="$MANIFEST_DIR/install-manifest-claude.json"
     ;;
   codex)
     BASE_DEST="${DEST:-$HOME/.codex}"
     WORKFLOW_DEST="$BASE_DEST/workflows"
-    SKILL_DEST="$BASE_DEST/skills/boost"
+    SKILL_DEST="$BASE_DEST/skills/$SKILL_NAME"
     ;;
   antigravity|gemini)
     TARGET="antigravity"
-    BASE_DEST="${DEST:-$HOME/.gemini/antigravity}"
-    WORKFLOW_DEST="$BASE_DEST/skills/boost"
-    SKILL_DEST="$BASE_DEST/skills/boost"
+    # Antigravity discovers global skills under ~/.gemini/config/skills;
+    # ~/.gemini/antigravity/skills is not a discovery root.
+    BASE_DEST="${DEST:-$HOME/.gemini/config}"
+    WORKFLOW_DEST="$BASE_DEST/skills/$SKILL_NAME"
+    SKILL_DEST="$BASE_DEST/skills/$SKILL_NAME"
     MANIFEST_FILE="$MANIFEST_DIR/install-manifest-antigravity.json"
     ;;
   agents)
     TARGET="agents"
     BASE_DEST="${DEST:-$HOME/.agents}"
-    WORKFLOW_DEST="$BASE_DEST/skills/boost"
-    SKILL_DEST="$BASE_DEST/skills/boost"
+    WORKFLOW_DEST="$BASE_DEST/skills/$SKILL_NAME"
+    SKILL_DEST="$BASE_DEST/skills/$SKILL_NAME"
     MANIFEST_FILE="$MANIFEST_DIR/install-manifest-agents.json"
     ;;
   opencode)
     BASE_DEST="${DEST:-$HOME/.opencode}"
     WORKFLOW_DEST="$BASE_DEST/workflows"
-    SKILL_DEST="$BASE_DEST/skills/boost"
+    SKILL_DEST="$BASE_DEST/skills/$SKILL_NAME"
     ;;
   deepseek|dsh)
     TARGET="deepseek"
@@ -132,28 +149,28 @@ case "$TARGET" in
       BASE_DEST="$HOME/.deepseek"
     fi
     WORKFLOW_DEST="$BASE_DEST/workflows"
-    SKILL_DEST="$BASE_DEST/skills/boost"
+    SKILL_DEST="$BASE_DEST/skills/$SKILL_NAME"
     MANIFEST_FILE="$MANIFEST_DIR/install-manifest-deepseek.json"
     ;;
   workbuddy)
     BASE_DEST="${DEST:-$HOME/.workbuddy}"
     WORKFLOW_DEST="$BASE_DEST/workflows"
-    SKILL_DEST="$BASE_DEST/skills/boost"
+    SKILL_DEST="$BASE_DEST/skills/$SKILL_NAME"
     ;;
   cursor)
     BASE_DEST="${DEST:-$HOME/.cursor}"
     WORKFLOW_DEST="$BASE_DEST/rules"
-    SKILL_DEST="$BASE_DEST/skills/boost"
+    SKILL_DEST="$BASE_DEST/skills/$SKILL_NAME"
     ;;
   windsurf)
     BASE_DEST="${DEST:-$HOME/.windsurf}"
     WORKFLOW_DEST="$BASE_DEST/rules"
-    SKILL_DEST="$BASE_DEST/skills/boost"
+    SKILL_DEST="$BASE_DEST/skills/$SKILL_NAME"
     ;;
   cline|aider|generic)
     BASE_DEST="${DEST:-$HOME/.agent-boost}"
     WORKFLOW_DEST="$BASE_DEST/workflows"
-    SKILL_DEST="$BASE_DEST/skills/boost"
+    SKILL_DEST="$BASE_DEST/skills/$SKILL_NAME"
     ;;
   *)
     echo "Unsupported target: $TARGET" >&2
@@ -191,7 +208,20 @@ backup_and_copy() {
 }
 
 # 1. Backup and copy skill, protocol, and language-specific role prompts into SKILL_DEST
-backup_and_copy "$SCRIPT_DIR/skills/boost/SKILL.md" "$SKILL_DEST/SKILL.md"
+# Refuse to silently take over a skill directory that belongs to someone else.
+if [[ -f "$SKILL_DEST/SKILL.md" && "$FORCE" != true ]]; then
+  existing_name="$(sed -n 's/^name:[[:space:]]*//p' "$SKILL_DEST/SKILL.md" | head -1)"
+  if [[ -n "$existing_name" && "$existing_name" != "$SKILL_NAME" ]]; then
+    echo "ERROR: $SKILL_DEST/SKILL.md already defines skill '$existing_name'." >&2
+    echo "       Refusing to overwrite it; use --name <alias> or --force." >&2
+    exit 3
+  fi
+fi
+if [[ -f "$SKILL_DEST/SKILL.md" ]] && ! sed "s/^name:.*/name: $SKILL_NAME/" "$SCRIPT_DIR/skills/boost/SKILL.md" | cmp -s - "$SKILL_DEST/SKILL.md"; then
+  cp "$SKILL_DEST/SKILL.md" "$SKILL_DEST/SKILL.md.bak-${TIMESTAMP}"
+fi
+sed "s/^name:.*/name: $SKILL_NAME/" "$SCRIPT_DIR/skills/boost/SKILL.md" > "$SKILL_DEST/SKILL.md"
+INSTALLED_FILES+=("$SKILL_DEST/SKILL.md")
 backup_and_copy "$SCRIPT_DIR/protocol/boost.md" "$SKILL_DEST/protocol/boost.md"
 for role_file in "$SCRIPT_DIR"/roles/*.md; do
   if [[ -f "$role_file" ]]; then
@@ -203,11 +233,11 @@ echo "Installed skill, protocol, and bilingual role prompts to $SKILL_DEST"
 
 # 2. Install target workflow/adapter
 if [[ "$TARGET" == "zcode" ]]; then
-  backup_and_copy "$SCRIPT_DIR/adapters/zcode/boost.dwf.ts" "$WORKFLOW_DEST/boost.dwf.ts"
-  echo "Installed ZCode workflow to $WORKFLOW_DEST/boost.dwf.ts"
+  backup_and_copy "$SCRIPT_DIR/adapters/zcode/boost.dwf.ts" "$WORKFLOW_DEST/$SKILL_NAME.dwf.ts"
+  echo "Installed ZCode workflow to $WORKFLOW_DEST/$SKILL_NAME.dwf.ts"
 elif [[ "$TARGET" == "claude" ]]; then
-  backup_and_copy "$SCRIPT_DIR/adapters/claude-code/boost.md" "$WORKFLOW_DEST/boost.md"
-  echo "Installed Claude Code command protocol to $WORKFLOW_DEST/boost.md"
+  backup_and_copy "$SCRIPT_DIR/adapters/claude-code/boost.md" "$WORKFLOW_DEST/$SKILL_NAME.md"
+  echo "Installed Claude Code command protocol to $WORKFLOW_DEST/$SKILL_NAME.md"
 elif [[ "$TARGET" == "opencode" ]]; then
   mkdir -p "$WORKFLOW_DEST/roles"
   for role_file in "$SCRIPT_DIR"/roles/*."${LANG_OPT}".md; do
@@ -225,42 +255,31 @@ elif [[ "$TARGET" == "opencode" ]]; then
 elif [[ "$TARGET" == "codex" ]]; then
   # Skill-scoped filename: other Codex skill packs share the same workflows directory,
   # so a generic "protocol.md" would silently overwrite them (and vice versa).
-  backup_and_copy "$SCRIPT_DIR/adapters/codex/protocol.md" "$WORKFLOW_DEST/boost.protocol.md"
+  backup_and_copy "$SCRIPT_DIR/adapters/codex/protocol.md" "$WORKFLOW_DEST/$SKILL_NAME.protocol.md"
   # Migrate legacy installs: drop the ambiguous protocol.md only when it is byte-identical
   # to this adapter, i.e. the file content is already preserved under the scoped name.
   if [[ -f "$WORKFLOW_DEST/protocol.md" ]] && cmp -s "$SCRIPT_DIR/adapters/codex/protocol.md" "$WORKFLOW_DEST/protocol.md"; then
     rm "$WORKFLOW_DEST/protocol.md"
     echo "Removed legacy ambiguous $WORKFLOW_DEST/protocol.md (content now in boost.protocol.md)"
   fi
-  echo "Installed Codex protocol to $WORKFLOW_DEST/boost.protocol.md"
+  echo "Installed Codex protocol to $WORKFLOW_DEST/$SKILL_NAME.protocol.md"
 elif [[ "$TARGET" == "deepseek" ]]; then
-  backup_and_copy "$SCRIPT_DIR/adapters/deepseek/boost.md" "$WORKFLOW_DEST/boost.md"
-  echo "Installed DeepSeek protocol to $WORKFLOW_DEST/boost.md"
+  backup_and_copy "$SCRIPT_DIR/adapters/deepseek/boost.md" "$WORKFLOW_DEST/$SKILL_NAME.md"
+  echo "Installed DeepSeek protocol to $WORKFLOW_DEST/$SKILL_NAME.md"
 elif [[ "$TARGET" == "antigravity" ]]; then
-  backup_and_copy "$SCRIPT_DIR/adapters/generic/boost.md" "$WORKFLOW_DEST/boost.md"
-  echo "Installed Antigravity boost protocol to $WORKFLOW_DEST/boost.md"
-  if [[ -d "$HOME/.gemini/config/skills" && "$SKILL_DEST" != "$HOME/.gemini/config/skills/boost" ]]; then
-    GEMINI_CONFIG_SKILL="$HOME/.gemini/config/skills/boost"
-    mkdir -p "$GEMINI_CONFIG_SKILL/protocol" "$GEMINI_CONFIG_SKILL/roles"
-    backup_and_copy "$SCRIPT_DIR/skills/boost/SKILL.md" "$GEMINI_CONFIG_SKILL/SKILL.md"
-    backup_and_copy "$SCRIPT_DIR/protocol/boost.md" "$GEMINI_CONFIG_SKILL/protocol/boost.md"
-    for role_file in "$SCRIPT_DIR"/roles/*.md; do
-      if [[ -f "$role_file" ]]; then
-        role_base="$(basename "$role_file")"
-        backup_and_copy "$role_file" "$GEMINI_CONFIG_SKILL/roles/$role_base"
-      fi
-    done
-    echo "Also mirrored boost skill to $GEMINI_CONFIG_SKILL"
-  fi
+  # The generic protocol lands inside the skill directory: Antigravity no longer
+  # reads the deprecated workflows/ folder.
+  backup_and_copy "$SCRIPT_DIR/adapters/generic/boost.md" "$SKILL_DEST/$SKILL_NAME.md"
+  echo "Installed Antigravity protocol to $SKILL_DEST/$SKILL_NAME.md"
 elif [[ "$TARGET" == "agents" ]]; then
-  backup_and_copy "$SCRIPT_DIR/adapters/generic/boost.md" "$WORKFLOW_DEST/boost.md"
-  echo "Installed universal agents boost protocol to $WORKFLOW_DEST/boost.md"
+  backup_and_copy "$SCRIPT_DIR/adapters/generic/boost.md" "$WORKFLOW_DEST/$SKILL_NAME.md"
+  echo "Installed universal agents boost protocol to $WORKFLOW_DEST/$SKILL_NAME.md"
 elif [[ "$TARGET" == "workbuddy" ]]; then
-  backup_and_copy "$SCRIPT_DIR/adapters/workbuddy/boost.md" "$WORKFLOW_DEST/boost.md"
-  echo "Installed WorkBuddy protocol to $WORKFLOW_DEST/boost.md"
+  backup_and_copy "$SCRIPT_DIR/adapters/workbuddy/boost.md" "$WORKFLOW_DEST/$SKILL_NAME.md"
+  echo "Installed WorkBuddy protocol to $WORKFLOW_DEST/$SKILL_NAME.md"
 else
-  backup_and_copy "$SCRIPT_DIR/adapters/generic/boost.md" "$WORKFLOW_DEST/boost.md"
-  echo "Installed generic protocol ($TARGET) to $WORKFLOW_DEST/boost.md"
+  backup_and_copy "$SCRIPT_DIR/adapters/generic/boost.md" "$WORKFLOW_DEST/$SKILL_NAME.md"
+  echo "Installed generic protocol ($TARGET) to $WORKFLOW_DEST/$SKILL_NAME.md"
 fi
 
 # 3. Record per-target manifest (and update legacy manifest for backward compatibility)
